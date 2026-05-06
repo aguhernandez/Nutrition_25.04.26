@@ -1,0 +1,187 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-purple: #514163;
+  --primary-yellow: #fdda36;
+  --secondary-purple: #6b5578;
+  --light-purple: #8a7396;
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9fafb;
+  --bg-tertiary: #f3f4f6;
+  --border-color: #e5e7eb;
+  --accent-blue: #3b82f6;
+  --accent-green: #10b981;
+  --accent-red: #ef4444;
+  --accent-yellow: #fdda36;
+}
+
+.dark {
+  --text-primary: #f3f4f6;
+  --text-secondary: #d1d5db;
+  --text-tertiary: #9ca3af;
+  --bg-primary: #1e1a2e;
+  --bg-secondary: #150f23;
+  --bg-tertiary: #2d2640;
+  --border-color: #2d2640;
+}
+
+.dark body {
+  background-color: #150f23;
+  color: #f3f4f6;
+}
+
+body {
+  font-family: 'Jost', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Krona One', sans-serif;
+}
+
+.safe-area-top { padding-top: max(1rem, env(safe-area-inset-top)); }
+.safe-area-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+
+@keyframes slide-up-mobile {
+  from { opacity: 0; transform: translateY(100px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-up { animation: slide-up-mobile 0.4s ease-out; }
+.animate-slideUp { animation: slideUp 0.15s ease-out; }
+.animate-fade-in { animation: fade-in 0.25s ease-out; }
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-2.5 rounded-xl bg-brand-yellow text-brand-purple font-body font-bold text-sm transition-all duration-200;
+    @apply hover:-translate-y-0.5 hover:shadow-lg;
+    box-shadow: 0 0 0 rgba(253, 218, 54, 0);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 4px 16px rgba(253, 218, 54, 0.45);
+  }
+
+  .btn-secondary {
+    @apply px-6 py-2.5 rounded-xl bg-white text-brand-purple font-body font-bold text-sm border-2 border-brand-purple transition-all duration-200;
+    @apply hover:bg-brand-purple/5 hover:-translate-y-0.5;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 rounded-xl text-[#4b5563] font-body font-medium text-sm transition-all duration-200;
+    @apply hover:bg-[#f3f4f6] hover:text-brand-purple;
+  }
+
+  .card-brand {
+    @apply bg-white rounded-2xl border-2 border-[#e5e7eb] shadow-sm transition-all duration-200;
+    @apply hover:-translate-y-1;
+  }
+  .card-brand:hover {
+    box-shadow: 0 8px 24px rgba(81, 65, 99, 0.12);
+  }
+
+  .card-accent {
+    border-width: 3px;
+    border-color: var(--primary-yellow);
+    @apply rounded-2xl bg-white/90 shadow-sm transition-all duration-200;
+    @apply hover:-translate-y-1;
+  }
+  .card-accent:hover {
+    box-shadow: 0 12px 28px rgba(253, 218, 54, 0.28);
+  }
+
+  .input-brand {
+    @apply w-full px-4 py-3 rounded-xl border-2 border-[#e5e7eb] bg-white font-body text-sm text-[#1f2937] transition-all duration-200;
+    @apply focus:outline-none focus:border-brand-yellow;
+  }
+  .input-brand:focus {
+    box-shadow: 0 0 0 3px rgba(253, 218, 54, 0.15);
+  }
+
+  .badge {
+    @apply inline-block px-3 py-1 rounded-full text-xs font-body font-semibold;
+  }
+  .badge-yellow {
+    background-color: rgba(253, 218, 54, 0.2);
+    color: #b45309;
+  }
+  .badge-blue {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #2563eb;
+  }
+  .badge-green {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #059669;
+  }
+  .badge-red {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #dc2626;
+  }
+  .badge-purple {
+    background-color: rgba(81, 65, 99, 0.12);
+    color: #514163;
+  }
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: #111 !important;
+  }
+
+  header,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  .print\:px-0 {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .print\:py-4 {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  .print\:border {
+    border: 1px solid #e5e7eb !important;
+  }
+
+  .print\:border-gray-300 {
+    border-color: #d1d5db !important;
+  }
+
+  .print\:break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

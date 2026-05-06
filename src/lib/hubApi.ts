@@ -1,0 +1,475 @@
+const PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hub-data-proxy`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export class HubApiError extends Error {
+  constructor(
+    public code: string,
+    message: string,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'HubApiError';
+  }
+}
+
+function getProxyHeaders(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${ANON_KEY}`,
+    'apikey': ANON_KEY,
+  };
+}
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    if (errorData?.error) {
+      throw new HubApiError(
+        errorData.error.code ?? 'API_ERROR',
+        errorData.error.message ?? `HTTP ${response.status}`,
+        errorData.error.details
+      );
+    }
+    throw new HubApiError('HTTP_ERROR', `HTTP ${response.status}: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+class RateLimiter {
+  private queue: Array<() => Promise<unknown>> = [];
+  private processing = false;
+  private lastRequest = 0;
+  private readonly minInterval = 650;
+
+  execute<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          resolve(await fn());
+        } catch (err) {
+          reject(err);
+        }
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
+    this.processing = true;
+    while (this.queue.length > 0) {
+      const now = Date.now();
+      const elapsed = now - this.lastRequest;
+      if (elapsed < this.minInterval) {
+        await new Promise((r) => setTimeout(r, this.minInterval - elapsed));
+      }
+      const fn = this.queue.shift();
+      if (fn) {
+        this.lastRequest = Date.now();
+        await fn();
+      }
+    }
+    this.processing = false;
+  }
+}
+
+const rateLimiter = new RateLimiter();
+
+function athleteParam(athleteEmailOrId: string): string {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(athleteEmailOrId);
+  return isUuid
+    ? `athlete_id=${encodeURIComponent(athleteEmailOrId)}`
+    : `athlete_email=${encodeURIComponent(athleteEmailOrId)}`;
+}
+
+export interface HubBodyComposition {
+  weight_kg?: number;
+  height_cm?: number;
+  body_fat_pct?: number;
+  muscle_mass_kg?: number;
+  bone_mass_kg?: number;
+  visceral_fat?: number;
+  bmi?: number;
+  measured_at?: string;
+  kerr_sum?: number;
+  z_score?: number;
+}
+
+export interface HubNutritionTargets {
+  target_kcal?: number;
+  target_protein_g?: number;
+  target_carbs_g?: number;
+  target_fat_g?: number;
+}
+
+export interface HubAthleteProfile {
+  id?: string;
+  email?: string;
+  full_name?: string;
+  date_of_birth?: string;
+  gender?: string;
+  sport_primary?: string;
+  sport_secondary?: string;
+  body_composition?: HubBodyComposition;
+  nutrition_targets?: HubNutritionTargets;
+}
+
+export interface HubAnthropometry {
+  latest_body_composition?: HubBodyComposition;
+  kerr_history?: Array<{
+    date: string;
+    sum_skinfolds?: number;
+    z_score?: number;
+  }>;
+  raw_measurements_by_date?: Record<string, {
+    weight_kg?: number;
+    skinfolds?: Record<string, number>;
+    girths?: Record<string, number>;
+  }>;
+  bioimpedance_history?: Array<{
+    date: string;
+    weight_kg?: number;
+    body_fat_pct?: number;
+    muscle_mass_kg?: number;
+    visceral_fat?: number;
+  }>;
+}
+
+export interface HubTrainingDay {
+  date: string;
+  difficulty_color?: string;
+  difficulty_level?: string;
+  intensity_color?: 'red' | 'yellow' | 'green' | string;
+  intensity_label?: string;
+  estimated_duration_min?: number;
+  estimated_load?: number;
+  title?: string;
+  session_type?: string;
+  planned?: boolean;
+  completed?: boolean;
+  id?: string;
+  scheduled_date?: string;
+  status?: 'pending' | 'completed' | 'skipped';
+  completed_at?: string | null;
+  notes?: string | null;
+  workout?: {
+    id?: string;
+    name?: string;
+    difficulty?: string | null;
+    description?: string;
+    duration_minutes?: number | null;
+    intensity_color?: 'red' | 'yellow' | 'green' | string;
+    intensity_label?: string;
+  };
+  set_log_summary?: unknown;
+}
+
+export interface HubTrainingSchedule {
+  scheduled_workouts?: HubTrainingDay[];
+  completed_training_logs?: HubTrainingDay[];
+  workouts?: HubTrainingDay[];
+  logs?: HubTrainingDay[];
+  weekly_loads?: Array<{
+    week_start: string;
+    tss?: number;
+    hours?: number;
+    phase?: string;
+  }>;
+  summary?: {
+    total: number;
+    completed: number;
+    pending: number;
+    skipped: number;
+    completion_rate: number;
+  };
+}
+
+export interface HubNutritionPlanIngredient {
+  name: string;
+  quantity_g?: number;
+  unit?: string;
+}
+
+export type HubNutritionPlanItemType = 'food' | 'recipe' | 'supplement' | 'product';
+
+export interface HubNutritionPlanItemBase {
+  item_type: HubNutritionPlanItemType;
+  quantity_g: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+}
+
+export interface HubNutritionPlanFoodItem extends HubNutritionPlanItemBase {
+  item_type: 'food';
+  food_name: string;
+}
+
+export interface HubNutritionPlanRecipeItem extends HubNutritionPlanItemBase {
+  item_type: 'recipe';
+  recipe_name: string;
+  recipe_id: string;
+  servings?: number;
+  prep_time_min?: number;
+  cook_time_min?: number;
+  ingredients?: HubNutritionPlanIngredient[];
+}
+
+export interface HubNutritionPlanSupplementItem extends HubNutritionPlanItemBase {
+  item_type: 'supplement';
+  product_name: string;
+  brand?: string;
+  supplement_type?: string;
+  serving_unit?: string;
+}
+
+export interface HubNutritionPlanProductItem extends HubNutritionPlanItemBase {
+  item_type: 'product';
+  product_name: string;
+  brand?: string;
+  serving_unit?: string;
+}
+
+export type HubNutritionPlanItem =
+  | HubNutritionPlanFoodItem
+  | HubNutritionPlanRecipeItem
+  | HubNutritionPlanSupplementItem
+  | HubNutritionPlanProductItem;
+
+export interface HubNutritionPlanMeal {
+  meal_type: string;
+  meal_name: string;
+  meal_time?: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  items: HubNutritionPlanItem[];
+}
+
+export interface HubNutritionPlanDay {
+  day: number;
+  day_name: string;
+  training_intensity?: 'green' | 'yellow' | 'red' | null;
+  day_targets?: {
+    target_kcal: number;
+    target_protein_g: number;
+    target_carbs_g: number;
+    target_fat_g: number;
+  } | null;
+  meals: HubNutritionPlanMeal[];
+}
+
+export interface HubNutritionPlanPayload {
+  plan_date: string;
+  plan_name: string;
+  plan_duration_days?: number;
+  summary: {
+    target_kcal: number;
+    target_protein_g: number;
+    target_carbs_g: number;
+    target_fat_g: number;
+    avg_daily_kcal?: number;
+  };
+  plan_data: {
+    days: HubNutritionPlanDay[];
+  };
+  adherence_data?: Record<string, unknown>;
+  notes?: string;
+}
+
+export function getAthleteProfile(athleteEmailOrId: string): Promise<HubAthleteProfile> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/athlete-profile?${athleteParam(athleteEmailOrId)}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubAthleteProfile>(r))
+  );
+}
+
+export function getAnthropometry(athleteEmailOrId: string, limit = 5): Promise<HubAnthropometry> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/anthropometry?${athleteParam(athleteEmailOrId)}&limit=${limit}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubAnthropometry>(r))
+  );
+}
+
+export function getTrainingSchedule(
+  athleteEmailOrId: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<HubTrainingSchedule> {
+  const dateParams = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : '';
+  return rateLimiter.execute(() =>
+    fetch(
+      `${PROXY_BASE}/training-schedule?${athleteParam(athleteEmailOrId)}${dateParams}`,
+      { method: 'GET', headers: getProxyHeaders() }
+    ).then((r) => handleResponse<HubTrainingSchedule>(r))
+  );
+}
+
+export interface HubFoodDiaryEntry {
+  date: string;
+  meal_type?: string;
+  food_name?: string;
+  food_name_es?: string;
+  quantity_g?: number;
+  kcal?: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+}
+
+export interface HubFoodDiary {
+  entries?: HubFoodDiaryEntry[];
+  totals_by_day?: Record<string, {
+    kcal?: number;
+    protein_g?: number;
+    carbs_g?: number;
+    fat_g?: number;
+  }>;
+}
+
+export function getFoodDiary(
+  athleteEmailOrId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<HubFoodDiary> {
+  return rateLimiter.execute(() =>
+    fetch(
+      `${PROXY_BASE}/food-diary?${athleteParam(athleteEmailOrId)}&date_from=${dateFrom}&date_to=${dateTo}`,
+      { method: 'GET', headers: getProxyHeaders() }
+    ).then((r) => handleResponse<HubFoodDiary>(r))
+  );
+}
+
+export interface HubHabit {
+  id?: string;
+  category?: string;
+  name?: string;
+  name_es?: string;
+  frequency?: string;
+  target_value?: number;
+  target_unit?: string;
+  current_streak?: number;
+  best_streak?: number;
+  compliance_pct?: number;
+  last_logged?: string;
+  active?: boolean;
+}
+
+export interface HubAthleteHabits {
+  habits?: HubHabit[];
+  sleep_avg_hours?: number;
+  hydration_avg_liters?: number;
+  recovery_score_avg?: number;
+  summary?: {
+    total_habits?: number;
+    active_habits?: number;
+    avg_compliance_pct?: number;
+  };
+}
+
+export interface HubWellnessEntry {
+  date: string;
+  fatigue?: number;
+  mood?: number;
+  sleep_quality?: number;
+  sleep_hours?: number;
+  muscle_soreness?: number;
+  stress?: number;
+  motivation?: number;
+  hrv?: number;
+  resting_hr?: number;
+  notes?: string;
+  overall_score?: number;
+  wellness_score_100?: number;
+  urine_color?: number;
+}
+
+export interface HubWellness {
+  entries?: HubWellnessEntry[];
+  latest?: HubWellnessEntry;
+  averages?: {
+    fatigue?: number;
+    mood?: number;
+    sleep_quality?: number;
+    sleep_hours?: number;
+    muscle_soreness?: number;
+    stress?: number;
+    motivation?: number;
+    hrv?: number;
+    resting_hr?: number;
+    overall_score?: number;
+    wellness_score_100?: number;
+    urine_color?: number;
+  };
+}
+
+export function getAthleteHabits(athleteEmailOrId: string, days = 30): Promise<HubAthleteHabits> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/athlete-habits?${athleteParam(athleteEmailOrId)}&days=${days}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubAthleteHabits>(r))
+  );
+}
+
+export function getWellness(
+  athleteEmailOrId: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<HubWellness> {
+  return rateLimiter.execute(() =>
+    fetch(
+      `${PROXY_BASE}/wellness?${athleteParam(athleteEmailOrId)}&date_from=${dateFrom}&date_to=${dateTo}`,
+      { method: 'GET', headers: getProxyHeaders() }
+    ).then((r) => handleResponse<HubWellness>(r))
+  );
+}
+
+export function pushNutritionPlan(
+  athleteEmailOrId: string,
+  payload: HubNutritionPlanPayload
+): Promise<{ success: boolean; id?: string }> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/push-nutrition-plan?${athleteParam(athleteEmailOrId)}`, {
+      method: 'POST',
+      headers: getProxyHeaders(),
+      body: JSON.stringify(payload),
+    }).then((r) => handleResponse<{ success: boolean; id?: string }>(r))
+  );
+}
+
+export interface HubTagPayload {
+  name: string;
+  name_es?: string;
+  slug: string;
+  category: string;
+  color?: string;
+  description?: string;
+  source_context?: string;
+}
+
+export interface PushTagsResult {
+  success: boolean;
+  saved: string[];
+  errors: string[];
+  message: string;
+}
+
+export function pushTags(
+  athleteEmailOrId: string,
+  tags: HubTagPayload[]
+): Promise<PushTagsResult> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/push-tags?${athleteParam(athleteEmailOrId)}`, {
+      method: 'POST',
+      headers: getProxyHeaders(),
+      body: JSON.stringify({ tags }),
+    }).then((r) => handleResponse<PushTagsResult>(r))
+  );
+}
