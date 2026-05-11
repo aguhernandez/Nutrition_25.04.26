@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useSatelliteAuth } from '../hooks/useSatelliteAuth';
-import type { HubUser, MembershipSlug } from '../hooks/useSatelliteAuth';
+import type { HubUser, MembershipSlug, LoginResult } from '../hooks/useSatelliteAuth';
 import { supabase } from './supabase';
 
 export type UserRole = 'admin' | 'coach' | 'athlete';
@@ -16,6 +16,8 @@ export interface UserProfile {
   membership_name: string;
 }
 
+export type { LoginResult };
+
 interface AuthContextValue {
   user: HubUser | null;
   profile: UserProfile | null;
@@ -25,6 +27,7 @@ interface AuthContextValue {
   membershipSlug: MembershipSlug;
   authError: string | null;
   login: () => void;
+  loginWithCredentials: (email: string, password: string) => Promise<LoginResult>;
   logout: () => void;
   setDevProfile: (profile: UserProfile) => void;
   setUser: (user: HubUser) => void;
@@ -49,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const syncedRef = useRef<string | null>(null);
 
-  const { user: hubUser, loading: hubLoading, hasToken, authError: hubAuthError, login: hubLogin, logout: hubLogout } = useSatelliteAuth();
+  const { user: hubUser, loading: hubLoading, hasToken, authError: hubAuthError, login: hubLogin, loginWithCredentials: hubLoginWithCredentials, logout: hubLogout } = useSatelliteAuth();
 
   const [devUser, setDevUser] = useState<HubUser | null>(null);
   const [devHasToken, setDevHasToken] = useState(false);
@@ -165,6 +168,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     hubLogin();
   };
 
+  const loginWithCredentials = async (email: string, password: string): Promise<LoginResult> => {
+    if (IS_DEV_MODE) return { success: false, error: 'Dev mode active' };
+    return hubLoginWithCredentials(email, password);
+  };
+
   const logout = () => {
     if (IS_DEV_MODE) {
       sessionStorage.removeItem('user_profile');
@@ -223,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       membershipSlug,
       authError,
       login,
+      loginWithCredentials,
       logout,
       setDevProfile,
       setUser,

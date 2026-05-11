@@ -13,6 +13,7 @@ export interface HubUser {
 }
 
 const HUB_URL = 'https://hub.asciende.pro';
+const HUB_AUTH_URL = 'https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/academy-auth';
 const SESSION_TOKEN_KEY = 'hub_session_token';
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
@@ -48,6 +49,11 @@ function extractUserFromPayload(payload: Record<string, unknown>): HubUser | nul
     membership_slug: (payload.membership_slug as MembershipSlug) ?? 'inicia',
     membership_name: payload.membership_name ? String(payload.membership_name) : 'Asciende Inicia',
   };
+}
+
+export interface LoginResult {
+  success: boolean;
+  error?: string;
 }
 
 export function useSatelliteAuth() {
@@ -150,6 +156,44 @@ export function useSatelliteAuth() {
     }
   };
 
+  const loginWithCredentials = async (email: string, password: string): Promise<LoginResult> => {
+    try {
+      const response = await fetch(HUB_AUTH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const msg = data?.error ?? data?.message ?? 'Invalid credentials';
+        return { success: false, error: msg };
+      }
+
+      const token: string = data?.token ?? data?.access_token ?? data?.jwt;
+      if (!token) return { success: false, error: 'No token received' };
+
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+
+      const payload = decodeJwtPayload(token);
+      if (payload && !isTokenExpired(payload)) {
+        const hubUser = extractUserFromPayload(payload);
+        if (hubUser) {
+          setUser(hubUser);
+          return { success: true };
+        }
+      }
+
+      // fallback: validate via proxy
+      await checkAuthViaProxy(token);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Connection error';
+      return { success: false, error: msg };
+    }
+  };
+
   const login = () => {
     const currentUrl = window.location.href.split('?')[0];
     const hubAuthUrl = `${HUB_URL}?redirect=${encodeURIComponent(currentUrl)}`;
@@ -165,5 +209,5 @@ export function useSatelliteAuth() {
 
   const hasToken = user !== null;
 
-  return { user, loading, hasToken, authError, login, logout };
+  return { user, loading, hasToken, authError, login, loginWithCredentials, logout };
 }

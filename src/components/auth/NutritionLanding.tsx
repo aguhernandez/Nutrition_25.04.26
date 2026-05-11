@@ -819,5 +819,3 @@ function NutritionLanding({ onLogin }: Props) {
 
 
 export default NutritionLanding
-
-export default NutritionLanding

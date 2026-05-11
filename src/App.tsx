@@ -14,6 +14,7 @@ import NutritionModule from './components/nutrition/NutritionModule';
 import type { NutritionTab } from './components/nutrition/NutritionModule';
 import LocalDevMode from './components/auth/LocalDevMode';
 import NutritionLanding from './components/auth/NutritionLanding';
+import LoginModal from './components/auth/LoginModal';
 import { Loader2 } from 'lucide-react';
 
 const VIEW_TITLES_ES: Record<AppView, string> = {
@@ -68,6 +69,7 @@ function AppShell() {
   const isDark = theme === 'dark';
   const VIEW_TITLES = language === 'es' ? VIEW_TITLES_ES : VIEW_TITLES_EN;
   const [activeView, setActiveView] = useState<AppView>('nutrition-dashboard');
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   if (loading) {
     return (
@@ -82,7 +84,12 @@ function AppShell() {
   }
 
   if (!user && !hasToken && !isDevMode) {
-    return <NutritionLanding onLogin={login} />;
+    return (
+      <>
+        <NutritionLanding onLogin={() => setLoginModalOpen(true)} />
+        <LoginModal isOpen={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      </>
+    );
   }
 
   if (user && !profile) {
