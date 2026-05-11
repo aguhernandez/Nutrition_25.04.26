@@ -13,6 +13,7 @@ import SettingsView from './components/views/SettingsView';
 import NutritionModule from './components/nutrition/NutritionModule';
 import type { NutritionTab } from './components/nutrition/NutritionModule';
 import LocalDevMode from './components/auth/LocalDevMode';
+import NutritionLanding from './components/auth/NutritionLanding';
 import { Loader2 } from 'lucide-react';
 
 const VIEW_TITLES_ES: Record<AppView, string> = {
@@ -93,29 +94,7 @@ function AppShell() {
   }
 
   if (!user && !hasToken && !isDevMode) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-700 to-blue-900 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
-          <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Loader2 className="w-7 h-7 animate-spin text-blue-600" />
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Redirecting to HUB</h2>
-          <p className="text-gray-500 text-sm mb-6">Authentication required. Redirecting in 4 seconds...</p>
-          {authError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-left">
-              <p className="text-xs font-bold text-red-700 mb-1">Auth Error:</p>
-              <p className="text-xs text-red-600 break-all font-mono">{authError}</p>
-            </div>
-          )}
-          <button
-            onClick={login}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg transition font-medium text-sm"
-          >
-            Go to HUB Login
-          </button>
-        </div>
-      </div>
-    );
+    return <NutritionLanding onLogin={login} />;
   }
 
   if (user && !profile) {
