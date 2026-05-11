@@ -310,7 +310,7 @@ function LangButton({ current, onChange }: { current: Language; onChange: (l: La
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function NutritionLanding({ onLogin }: Props) {
+function NutritionLanding({ onLogin }: Props) {
   const { language, setLanguage } = usePreferences();
   const lang = language;
 
@@ -817,5 +817,7 @@ export default function NutritionLanding({ onLogin }: Props) {
 
 
 
+
+export default NutritionLanding
 
 export default NutritionLanding
