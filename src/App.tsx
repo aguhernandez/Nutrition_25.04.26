@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './lib/auth';
 import { PreferencesProvider, usePreferences } from './lib/preferences';
 import Sidebar from './components/layout/Sidebar';
@@ -68,18 +68,6 @@ function AppShell() {
   const isDark = theme === 'dark';
   const VIEW_TITLES = language === 'es' ? VIEW_TITLES_ES : VIEW_TITLES_EN;
   const [activeView, setActiveView] = useState<AppView>('nutrition-dashboard');
-
-  useEffect(() => {
-    if (loading) return;
-    if (isDevMode) return;
-    if (user) return;
-    if (hasToken) return;
-    console.log('[App] No user/token, redirecting to HUB login');
-    const timer = setTimeout(() => {
-      login();
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [loading, hasToken, isDevMode, user, login]);
 
   if (loading) {
     return (
