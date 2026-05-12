@@ -70,10 +70,6 @@ const copy = {
         sub: { es: 'Protocolos basados en evidencia para el día de carrera', en: 'Evidence-based protocols for race day' },
       },
       {
-        title: { es: 'Recuperación y Reconstrucción', en: 'Recovery & Rebuilding' },
-        sub: { es: 'Ventanas de nutrición post-entrenamiento', en: 'Post-training nutrition windows' },
-      },
-      {
         title: { es: 'Comidas de Rendimiento', en: 'Performance Meals' },
         sub: { es: 'Nutrición pre-competencia y diaria', en: 'Pre-competition and daily fueling' },
       },
