@@ -28,6 +28,7 @@ Deno.serve(async (req: Request) => {
       "endurance-data",
       "food-diary",
       "push-nutrition-plan",
+      "push-race-plan",
       "push-tags",
       "athlete-habits",
       "wellness",

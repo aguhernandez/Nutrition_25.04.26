@@ -473,3 +473,123 @@ export function pushTags(
     }).then((r) => handleResponse<PushTagsResult>(r))
   );
 }
+
+// ─── Race Plan ────────────────────────────────────────────────────────────────
+
+export interface HubRacePlanSegment {
+  time_min: number;
+  distance_km: number;
+  cho_g: number;
+  fluid_ml: number;
+  sodium_mg: number;
+  caffeine_note: string;
+}
+
+export interface HubRacePlanDayMeal {
+  timing: string;
+  description: string;
+  carbs_g: number;
+}
+
+export interface HubRacePlanPreCompDay {
+  day_label: string;
+  carbs_gkg: number;
+  total_carbs_g: number;
+  protein_g: number;
+  total_kcal: number;
+  meals: HubRacePlanDayMeal[];
+  notes: string;
+}
+
+export interface HubRacePlanPayload {
+  // Race identity
+  race_name: string;
+  sport: string;
+  race_date: string | null;
+  distance_km: number;
+  expected_duration_min: number;
+  temperature_c: number;
+  humidity_pct: number;
+  altitude_m: number;
+
+  // Key metrics
+  intensity_percent: number;
+  intensity_zone: string;
+  target_pace_min_km: number;
+  pacing_recommendation: string;
+
+  // Carbohydrates
+  carbs_g_per_hour: number;
+  total_carbs_g: number;
+  carb_sources: string[];
+  carb_timing: string;
+
+  // Hydration
+  fluid_l_per_hour: number;
+  total_fluid_l: number;
+  sodium_mg_per_hour: number;
+  total_sodium_mg: number;
+  sweat_rate_l_per_hour: number;
+  projected_mass_loss_pct: number;
+
+  // Caffeine
+  caffeine_total_mg: number;
+  caffeine_mg_per_kg: number;
+  caffeine_pre_dose_mg: number;
+  caffeine_pre_dose_min_before: number;
+  caffeine_mid_race_doses: Array<{ label: string; timing_min: number; mg: number }>;
+  caffeine_sources: string[];
+  caffeine_notes: string;
+
+  // Race execution segments (every 20–60 min)
+  segments: HubRacePlanSegment[];
+
+  // Pre-competition nutrition
+  pre_comp_notes: string;
+  cho_loading_days: number;
+  pre_comp_days: HubRacePlanPreCompDay[];
+  race_breakfast_timing: string;
+  race_breakfast_description: string;
+  race_breakfast_carbs_g: number;
+
+  // GI training (optional)
+  gi_training_weeks: number | null;
+  gi_training_target_g_per_hour: number | null;
+  gi_training_notes: string | null;
+  gi_sessions: Array<{
+    week: number;
+    intake_g_per_hour: number;
+    duration: string;
+    format: string;
+    notes: string;
+  }> | null;
+
+  // Risk flags
+  risks: Array<{ level: 'warning' | 'critical'; message: string }>;
+
+  // Athlete notes (editable overrides)
+  athlete_notes: {
+    pacing?: string;
+    carbs?: string;
+    hydration?: string;
+    caffeine?: string;
+    general?: string;
+  };
+
+  // Metadata
+  generated_at: string;
+  plan_version: string;
+}
+
+export function pushRacePlan(
+  athleteEmailOrId: string,
+  payload: HubRacePlanPayload
+): Promise<{ success: boolean; id?: string }> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/push-race-plan?${athleteParam(athleteEmailOrId)}`, {
+      method: 'POST',
+      headers: getProxyHeaders(),
+      body: JSON.stringify(payload),
+    }).then((r) => handleResponse<{ success: boolean; id?: string }>(r))
+  );
+}
