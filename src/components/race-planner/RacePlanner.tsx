@@ -59,10 +59,12 @@ export default function RacePlanner() {
 
   const handleSave = async () => {
     if (!competition) return;
-    const { data } = await supabase
+    const athleteId = profile?.hub_user_id || user?.id || null;
+    const { data, error } = await supabase
       .from('competitions')
       .insert({
-        user_id: user?.id ?? null,
+        user_id: null,
+        athlete_id: athleteId,
         sport: competition.sport,
         race_name: competition.raceName,
         race_data: competition.raceData,
@@ -73,6 +75,7 @@ export default function RacePlanner() {
       })
       .select('id')
       .maybeSingle();
+    if (error) console.error('Save race error:', error);
 
     if (data?.id) {
       setSavedId(data.id);

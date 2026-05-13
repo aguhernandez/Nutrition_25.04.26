@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../lib/auth';
 import type { Sport } from '../../types/race';
 import { getSportConfig } from '../../config/sports';
 import { getTagsForCompetition } from '../../lib/tagService';
@@ -31,16 +32,24 @@ interface Props {
 }
 
 export default function SavedRaces({ onBack }: Props) {
+  const { user, profile } = useAuth();
   const [races, setRaces] = useState<SavedCompetition[]>([]);
   const [loading, setLoading] = useState(true);
   const [tagsByRaceId, setTagsByRaceId] = useState<Record<string, Tag[]>>({});
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const athleteId = profile?.hub_user_id || user?.id || null;
+      if (!athleteId) {
+        setLoading(false);
+        return;
+      }
+      const { data, error } = await supabase
         .from('competitions')
         .select('id, sport, race_name, race_data, strategy_output, created_at')
+        .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false });
+      if (error) console.error('Load races error:', error);
       const loaded = (data as SavedCompetition[]) ?? [];
       setRaces(loaded);
       setLoading(false);
