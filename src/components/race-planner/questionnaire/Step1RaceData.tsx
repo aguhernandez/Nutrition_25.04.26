@@ -127,9 +127,28 @@ export default function Step1RaceData({ sport, data, onChange, onCatalogSelect }
               <input
                 type="number"
                 min="0"
-                placeholder="210"
-                value={data.expectedDurationMin || ''}
-                onChange={(e) => update('expectedDurationMin', parseInt(e.target.value) || 0)}
+                max="99"
+                placeholder="3"
+                value={data.expectedDurationMin ? Math.floor(data.expectedDurationMin / 60) || '' : ''}
+                onChange={(e) => {
+                  const hours = parseInt(e.target.value) || 0;
+                  const mins = data.expectedDurationMin ? data.expectedDurationMin % 60 : 0;
+                  update('expectedDurationMin', hours * 60 + mins);
+                }}
+                className={inputCls}
+              />
+              <span className="font-body text-sm text-[#9ca3af] whitespace-nowrap">h</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                placeholder="30"
+                value={data.expectedDurationMin ? data.expectedDurationMin % 60 || '' : ''}
+                onChange={(e) => {
+                  const mins = Math.min(59, parseInt(e.target.value) || 0);
+                  const hours = data.expectedDurationMin ? Math.floor(data.expectedDurationMin / 60) : 0;
+                  update('expectedDurationMin', hours * 60 + mins);
+                }}
                 className={inputCls}
               />
               <span className="font-body text-sm text-[#9ca3af] whitespace-nowrap">min</span>

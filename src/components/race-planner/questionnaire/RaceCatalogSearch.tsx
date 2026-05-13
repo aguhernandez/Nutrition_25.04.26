@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, MapPin, Mountain, Clock, X, CheckCircle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { usePreferences } from '../../../lib/preferences';
 import type { RaceCatalogEntry, Sport } from '../../../types/race';
 
 interface Props {
@@ -14,6 +15,9 @@ const MONTH_NAMES = [
 ];
 
 export default function RaceCatalogSearch({ sport, onSelect }: Props) {
+  const { theme } = usePreferences();
+  const isDark = theme === 'dark';
+
   const [query, setQuery] = useState('');
   const [allRaces, setAllRaces] = useState<RaceCatalogEntry[]>([]);
   const [filtered, setFiltered] = useState<RaceCatalogEntry[]>([]);
@@ -83,7 +87,7 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
           {selected ? (
             <CheckCircle className="w-4 h-4 text-green-400" />
           ) : (
-            <Search className="w-4 h-4 text-gray-500" />
+            <Search className={`w-4 h-4 ${isDark ? 'text-gray-400' : 'text-gray-400'}`} />
           )}
         </div>
         <input
@@ -96,16 +100,22 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
             if (selected) setSelected(null);
           }}
           onFocus={() => setOpen(true)}
-          className={`w-full pl-10 pr-10 py-3.5 rounded-xl border text-sm font-medium transition-all focus:outline-none focus:ring-2 bg-gray-800/80 text-white placeholder-gray-500 ${
+          className={`w-full pl-10 pr-10 py-3.5 rounded-xl border text-sm font-medium transition-all focus:outline-none focus:ring-2 ${
+            isDark
+              ? 'bg-white/5 text-white placeholder-gray-500 border-white/10'
+              : 'bg-white text-gray-800 placeholder-gray-400 border-gray-200'
+          } ${
             selected
               ? 'border-green-500/60 focus:ring-green-500/30'
-              : 'border-gray-700 focus:ring-blue-500/30 focus:border-blue-500/50'
+              : isDark
+                ? 'focus:ring-blue-500/30 focus:border-blue-500/50'
+                : 'focus:ring-blue-500/20 focus:border-blue-400'
           }`}
         />
         {query && (
           <button
             onClick={handleClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
+            className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors ${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'}`}
           >
             <X className="w-4 h-4" />
           </button>
@@ -123,22 +133,28 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
       )}
 
       {open && !selected && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-1.5 bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div className={`absolute z-50 left-0 right-0 top-full mt-1.5 rounded-2xl shadow-2xl overflow-hidden border ${
+          isDark
+            ? 'bg-[#1e1a2e] border-white/10'
+            : 'bg-white border-gray-200'
+        }`}>
           {filtered.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-500">
+            <div className={`px-4 py-6 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               No races found for &ldquo;{query}&rdquo;
             </div>
           ) : (
-            <div className="max-h-72 overflow-y-auto divide-y divide-gray-800/60">
+            <div className={`max-h-72 overflow-y-auto divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
               {filtered.map((race) => (
                 <button
                   key={race.id}
                   onMouseDown={() => handleSelect(race)}
-                  className="w-full flex items-start gap-3 px-4 py-3.5 text-left hover:bg-gray-800/60 transition-colors group"
+                  className={`w-full flex items-start gap-3 px-4 py-3.5 text-left transition-colors group ${
+                    isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+                  }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{race.name}</div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                    <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-gray-800'}`}>{race.name}</div>
+                    <div className={`flex items-center gap-3 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3 flex-shrink-0" />
                         {race.city}, {race.country}
@@ -158,15 +174,15 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
-                    <div className="text-sm font-bold text-gray-300">{race.distance_km} km</div>
-                    <div className="text-xs text-gray-600">{race.avg_temperature_c}°C</div>
+                    <div className={`text-sm font-bold ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>{race.distance_km} km</div>
+                    <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{race.avg_temperature_c}°C</div>
                   </div>
                 </button>
               ))}
             </div>
           )}
-          <div className="px-4 py-2 border-t border-gray-800 bg-gray-900/80">
-            <p className="text-xs text-gray-600">
+          <div className={`px-4 py-2 border-t ${isDark ? 'border-white/5 bg-white/3' : 'border-gray-100 bg-gray-50'}`}>
+            <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               {allRaces.length} races in catalog &middot; Data is historical and may vary by edition
             </p>
           </div>
