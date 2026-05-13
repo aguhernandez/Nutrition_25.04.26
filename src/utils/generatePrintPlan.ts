@@ -4,17 +4,33 @@ import { getSportConfig } from '../config/sports';
 import { generateElevationProfile, generateHydrationStations } from './elevationGenerator';
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
-const BRAND = {
-  yellow: '#fdda36',
-  yellowDark: '#e5c420',
-  dark: '#1a1a1a',
-  midGray: '#2d2d2d',
-  lightGray: '#f5f5f5',
-  textPrimary: '#111111',
-  textSecondary: '#555555',
-  textMuted: '#999999',
-  border: '#e5e7eb',
+const C = {
+  yellow:   '#fdda36',
+  purple:   '#4a3b6b',
+  purpleD:  '#2e2442',
+  dark:     '#1a1622',
+  white:    '#ffffff',
+  offWhite: '#f8f7fc',
+  border:   '#e8e4f0',
+  muted:    '#9992aa',
+  text:     '#1a1622',
+  sub:      '#5a5270',
 };
+
+// ─── Fetch image as base64 data URI ──────────────────────────────────────────
+async function toDataURI(src: string): Promise<string> {
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return '';
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatPace(minPerKm: number): string {
@@ -36,70 +52,125 @@ function getTimeInterval(durationMin: number): number {
 }
 
 // ─── Elevation SVG ────────────────────────────────────────────────────────────
-function buildElevationSVG(pts: ElevationPoint[], distKm: number, totalGain: number, stationKms: number[]): string {
+function buildElevationSVG(
+  pts: ElevationPoint[],
+  distKm: number,
+  totalGain: number,
+  stations: { km: number; hasFood: boolean }[],
+  width = 740,
+  height = 130
+): string {
   if (pts.length < 2) return '';
 
-  const W = 760, H = 120;
-  const PAD = { top: 8, right: 8, bottom: 28, left: 44 };
-  const PW = W - PAD.left - PAD.right;
-  const PH = H - PAD.top - PAD.bottom;
+  const PAD = { top: 10, right: 10, bottom: 30, left: 48 };
+  const PW = width - PAD.left - PAD.right;
+  const PH = height - PAD.top - PAD.bottom;
 
   const minE = Math.min(...pts.map(p => p.elevationM));
   const maxE = Math.max(...pts.map(p => p.elevationM));
   const eRange = maxE - minE || 1;
-  const kmMax = distKm;
 
-  const tx = (km: number) => PAD.left + (km / kmMax) * PW;
+  const tx = (km: number) => PAD.left + (km / distKm) * PW;
   const ty = (e: number) => PAD.top + PH - ((e - minE) / eRange) * PH;
 
+  // Gradient segments for climbs
+  const windowSize = Math.max(4, Math.floor(pts.length / 25));
+  const gradSegs: { start: number; end: number; grade: number }[] = [];
+  for (let i = 0; i < pts.length - windowSize; i += windowSize) {
+    const a = pts[i], b = pts[Math.min(i + windowSize, pts.length - 1)];
+    const distM = (b.km - a.km) * 1000;
+    const grade = distM > 0 ? ((b.elevationM - a.elevationM) / distM) * 100 : 0;
+    gradSegs.push({ start: a.km, end: b.km, grade });
+  }
+
   const linePts = pts.map(p => `${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ');
-  const last = pts[pts.length - 1];
-  const first = pts[0];
+
+  // Area fill path
+  const first = pts[0], last = pts[pts.length - 1];
   const fillD = `M${tx(first.km).toFixed(1)},${ty(first.elevationM).toFixed(1)} `
     + pts.slice(1).map(p => `L${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ')
     + ` L${tx(last.km).toFixed(1)},${(PAD.top + PH).toFixed(1)} L${tx(first.km).toFixed(1)},${(PAD.top + PH).toFixed(1)} Z`;
 
+  // Climb overlay paths
+  const climbPaths = gradSegs.filter(s => s.grade >= 4).map(seg => {
+    const segPts = pts.filter(p => p.km >= seg.start && p.km <= seg.end);
+    if (segPts.length < 2) return '';
+    const d = `M${tx(segPts[0].km).toFixed(1)},${ty(segPts[0].elevationM).toFixed(1)} `
+      + segPts.slice(1).map(p => `L${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ')
+      + ` L${tx(segPts[segPts.length-1].km).toFixed(1)},${(PAD.top+PH).toFixed(1)} L${tx(segPts[0].km).toFixed(1)},${(PAD.top+PH).toFixed(1)} Z`;
+    return `<path d="${d}" fill="url(#climbG)" />`;
+  }).join('');
+
+  // X ticks
   const tickInterval = distKm <= 15 ? 5 : distKm <= 50 ? 10 : distKm <= 100 ? 20 : 50;
   const xTicks = Array.from({ length: Math.floor(distKm / tickInterval) + 1 }, (_, i) => i * tickInterval).filter(k => k <= distKm);
 
-  const yTicks = 3;
-  const yStep = Math.ceil((eRange) / yTicks / 50) * 50;
-  const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minE + i * yStep).filter(v => v <= maxE + yStep);
+  // Y ticks
+  const yStep = Math.ceil((eRange) / 4 / 100) * 100 || Math.ceil((eRange) / 4 / 50) * 50 || 50;
+  const yTickVals: number[] = [];
+  for (let v = Math.ceil(minE / yStep) * yStep; v <= maxE; v += yStep) yTickVals.push(v);
 
-  const stationMarkers = stationKms.map(km => {
-    const near = pts.reduce((b, p) => Math.abs(p.km - km) < Math.abs(b.km - km) ? p : b, pts[0]);
-    const x = tx(km);
+  // Station markers
+  const stationMarkers = stations.map(s => {
+    const near = pts.reduce((b, p) => Math.abs(p.km - s.km) < Math.abs(b.km - s.km) ? p : b, pts[0]);
+    const x = tx(s.km);
     const y = ty(near.elevationM);
+    const col = s.hasFood ? '#34d399' : C.yellow;
     return `
-      <line x1="${x}" y1="${y}" x2="${x}" y2="${PAD.top + PH}" stroke="${BRAND.yellow}" stroke-width="1" stroke-dasharray="2,2" opacity="0.8"/>
-      <circle cx="${x}" cy="${y}" r="3.5" fill="${BRAND.yellow}" stroke="white" stroke-width="1"/>`;
+      <line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(PAD.top+PH).toFixed(1)}" stroke="${col}" stroke-width="0.8" stroke-dasharray="2,2" opacity="0.7"/>
+      <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${col}" stroke="white" stroke-width="1.2"/>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+  // Finish line
+  const finX = tx(distKm);
+
+  return `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
   <defs>
-    <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${BRAND.yellow}" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="${BRAND.yellow}" stop-opacity="0.05"/>
+    <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${C.purple}" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="${C.purple}" stop-opacity="0.03"/>
+    </linearGradient>
+    <linearGradient id="climbG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.05"/>
     </linearGradient>
   </defs>
+
+  <!-- Y grid + labels -->
   ${yTickVals.map(e => {
     const y = ty(e);
-    return `<line x1="${PAD.left}" y1="${y.toFixed(1)}" x2="${PAD.left + PW}" y2="${y.toFixed(1)}" stroke="#e5e7eb" stroke-width="0.8"/>
-    <text x="${(PAD.left - 4).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="8" fill="#aaa" font-family="Jost,sans-serif">${Math.round(e)}m</text>`;
+    return `<line x1="${PAD.left}" y1="${y.toFixed(1)}" x2="${PAD.left+PW}" y2="${y.toFixed(1)}" stroke="#e8e4f0" stroke-width="0.7"/>
+    <text x="${(PAD.left-6).toFixed(1)}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="8" fill="${C.muted}" font-family="Jost,sans-serif">${Math.round(e)}m</text>`;
   }).join('')}
+
+  <!-- X ticks -->
   ${xTicks.map(km => {
     const x = tx(km);
-    return `<line x1="${x.toFixed(1)}" y1="${PAD.top + PH}" x2="${x.toFixed(1)}" y2="${PAD.top + PH + 3}" stroke="#ccc" stroke-width="0.8"/>
-    <text x="${x.toFixed(1)}" y="${PAD.top + PH + 12}" text-anchor="middle" font-size="8" fill="#aaa" font-family="Jost,sans-serif">${km}km</text>`;
+    return `<line x1="${x.toFixed(1)}" y1="${(PAD.top+PH).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(PAD.top+PH+4).toFixed(1)}" stroke="#ccc" stroke-width="0.7"/>
+    <text x="${x.toFixed(1)}" y="${(PAD.top+PH+13).toFixed(1)}" text-anchor="middle" font-size="8" fill="${C.muted}" font-family="Jost,sans-serif">${km}km</text>`;
   }).join('')}
-  <path d="${fillD}" fill="url(#eg)"/>
-  <polyline points="${linePts}" fill="none" stroke="${BRAND.yellow}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- Finish tick -->
+  <line x1="${finX.toFixed(1)}" y1="${PAD.top}" x2="${finX.toFixed(1)}" y2="${(PAD.top+PH).toFixed(1)}" stroke="${C.purple}" stroke-width="1" stroke-dasharray="3,2" opacity="0.4"/>
+
+  <!-- Area fill -->
+  <path d="${fillD}" fill="url(#areaG)"/>
+
+  <!-- Climb highlights -->
+  ${climbPaths}
+
+  <!-- Elevation line -->
+  <polyline points="${linePts}" fill="none" stroke="${C.purple}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+
+  <!-- Station markers -->
   ${stationMarkers}
-  <text x="${PAD.left}" y="${H - 1}" font-size="7" fill="#bbb" font-family="Jost,sans-serif">+${totalGain}m gain</text>
+
+  <!-- Gain label -->
+  <text x="${(PAD.left+PW).toFixed(1)}" y="${(PAD.top+PH+28).toFixed(1)}" text-anchor="end" font-size="8" fill="${C.muted}" font-family="Jost,sans-serif">+${totalGain}m gain</text>
 </svg>`;
 }
 
-// ─── Segment rows ─────────────────────────────────────────────────────────────
+// ─── Segment builder ──────────────────────────────────────────────────────────
 export function buildSegments(competition: Competition, output: StrategyOutput): EditableSegment[] {
   const { raceData } = competition;
   const { carbs, hydration, caffeine } = output;
@@ -124,97 +195,313 @@ export function buildSegments(competition: Competition, output: StrategyOutput):
     const segEnd = Math.min(t, totalMin);
     const distReached = Math.round((segEnd / totalMin) * distKm * 10) / 10;
     const cafNote = caffeineEvents.get(t) || caffeineEvents.get(t - Math.floor(interval / 2)) || '';
-    segments.push({
-      timeMin: segEnd,
-      distanceKm: distReached,
-      choG: Math.round(choPerInterval),
-      fluidMl: Math.round(fluidPerInterval),
-      sodiumMg: Math.round(sodiumPerInterval),
-      caffeineNote: cafNote,
-    });
+    segments.push({ timeMin: segEnd, distanceKm: distReached, choG: Math.round(choPerInterval), fluidMl: Math.round(fluidPerInterval), sodiumMg: Math.round(sodiumPerInterval), caffeineNote: cafNote });
     if (segEnd >= totalMin) break;
   }
-
   return segments;
 }
 
-// ─── Shared CSS ───────────────────────────────────────────────────────────────
-function sharedCSS(): string {
+// ─── CSS shared ───────────────────────────────────────────────────────────────
+function css(): string {
   return `
-    @import url('https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:wght@300;400;500;600;700&display=swap');
-    @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Jost', -apple-system, sans-serif;
-      color: ${BRAND.textPrimary};
-      background: #fff;
-      font-size: 12px;
-      line-height: 1.55;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    h1, h2, h3 { font-family: 'Krona One', sans-serif; }
-    .page { padding: 14mm 14mm 10mm 14mm; }
-    .section { margin-bottom: 18px; }
-    .section-title {
-      font-family: 'Krona One', sans-serif;
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: ${BRAND.textMuted};
-      padding-bottom: 5px;
-      border-bottom: 1px solid ${BRAND.border};
-      margin-bottom: 10px;
-    }
-    .section-title.accent {
-      color: ${BRAND.yellow};
-      border-bottom-color: ${BRAND.yellow};
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th { font-size: 8.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: ${BRAND.textMuted}; padding: 6px 10px 5px; text-align: left; border-bottom: 1px solid ${BRAND.border}; }
-    td { padding: 6px 10px; font-size: 11.5px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    .pill {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 20px;
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-    }
-    .pill-yellow { background: ${BRAND.yellow}20; color: #7a6300; border: 1px solid ${BRAND.yellow}40; }
-    .pill-blue   { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
-    .pill-teal   { background: #ccfbf1; color: #0f766e; border: 1px solid #99f6e4; }
-    .pill-amber  { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
-    .pill-red    { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
-    .stat-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 18px; }
-    .stat-card { border: 1.5px solid ${BRAND.border}; border-radius: 8px; padding: 10px 12px; }
-    .stat-label { font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 3px; }
-    .stat-value { font-family: 'Krona One', sans-serif; font-size: 20px; line-height: 1; }
-    .stat-unit  { font-family: 'Jost', sans-serif; font-size: 10px; font-weight: 400; color: ${BRAND.textMuted}; margin-left: 2px; }
-    .day-card { border: 1.5px solid ${BRAND.border}; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
-    .day-header { background: ${BRAND.lightGray}; padding: 7px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid ${BRAND.border}; }
-    .day-header-title { font-family: 'Krona One', sans-serif; font-size: 10px; }
-    .day-header-stats { font-size: 10px; color: ${BRAND.textMuted}; }
-    .risk-ok { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; color: #166534; font-size: 11.5px; }
-    .risk-warn { display: flex; gap: 8px; padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; }
-    .footer { border-top: 1.5px solid ${BRAND.border}; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: ${BRAND.textMuted}; margin-top: 16px; }
-    @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-  `;
+@import url('https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+@page { size: A4 portrait; margin: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Jost', -apple-system, sans-serif;
+  color: ${C.text};
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.page { width: 210mm; min-height: 297mm; position: relative; }
+
+/* ── Cover band ── */
+.cover-band {
+  background: ${C.dark};
+  padding: 10mm 14mm 8mm;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.cover-race-name {
+  font-family: 'Krona One', sans-serif;
+  font-size: 26px;
+  color: ${C.white};
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin-top: 8px;
+}
+.cover-sub {
+  font-family: 'Jost', sans-serif;
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  margin-top: 5px;
+  font-weight: 400;
+}
+.cover-badge {
+  background: ${C.yellow};
+  color: ${C.purpleD};
+  font-family: 'Krona One', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding: 5px 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+.cover-date {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  text-align: right;
+  margin-top: 5px;
 }
 
-// ─── Logo SVG (Asciende triangle mark) ────────────────────────────────────────
-function logoSVG(size = 28): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-    <polygon points="20,4 36,34 4,34" fill="none" stroke="${BRAND.yellow}" stroke-width="3.5" stroke-linejoin="round"/>
-    <line x1="20" y1="14" x2="20" y2="26" stroke="${BRAND.yellow}" stroke-width="2.5" stroke-linecap="round"/>
-  </svg>`;
+/* ── Yellow accent strip ── */
+.accent-strip {
+  height: 4px;
+  background: ${C.yellow};
+}
+
+/* ── KPI bar ── */
+.kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: ${C.purpleD};
+}
+.kpi-cell {
+  padding: 10px 14px;
+  border-right: 1px solid rgba(255,255,255,0.07);
+}
+.kpi-cell:last-child { border-right: none; }
+.kpi-label {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 3px;
+  opacity: 0.6;
+  color: #fff;
+}
+.kpi-value {
+  font-family: 'Krona One', sans-serif;
+  font-size: 22px;
+  color: ${C.yellow};
+  line-height: 1;
+}
+.kpi-unit {
+  font-family: 'Jost', sans-serif;
+  font-size: 10px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.4);
+  margin-left: 3px;
+}
+
+/* ── Content area ── */
+.content { padding: 8mm 14mm 10mm; }
+.section { margin-bottom: 16px; }
+.section-title {
+  font-family: 'Krona One', sans-serif;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: ${C.purple};
+  padding-bottom: 5px;
+  border-bottom: 1.5px solid ${C.purple};
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-badge {
+  font-family: 'Jost', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  background: ${C.yellow};
+  color: ${C.purpleD};
+  padding: 1px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+/* ── Two-col info row ── */
+.info-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.info-card {
+  flex: 1;
+  border: 1.5px solid ${C.border};
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: ${C.offWhite};
+}
+.info-card-label {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: ${C.muted};
+  margin-bottom: 3px;
+}
+.info-card-value {
+  font-family: 'Krona One', sans-serif;
+  font-size: 16px;
+  color: ${C.text};
+  line-height: 1.1;
+}
+.info-card-sub {
+  font-size: 9px;
+  color: ${C.muted};
+  margin-top: 1px;
+}
+.info-card.accent {
+  border-color: ${C.yellow};
+  background: #fffbe6;
+}
+.info-card.accent .info-card-value { color: #7a5c00; }
+
+/* ── Elevation box ── */
+.elev-box {
+  border: 1.5px solid ${C.border};
+  border-radius: 8px;
+  overflow: hidden;
+  background: ${C.offWhite};
+}
+.elev-header {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid ${C.border};
+}
+.elev-stat {
+  padding: 7px 10px;
+  border-right: 1px solid ${C.border};
+  text-align: center;
+}
+.elev-stat:last-child { border-right: none; }
+.elev-stat-label { font-size: 7.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: ${C.muted}; margin-bottom: 2px; }
+.elev-stat-value { font-family: 'Krona One', sans-serif; font-size: 13px; color: ${C.purple}; }
+.elev-legend {
+  display: flex;
+  gap: 14px;
+  padding: 5px 12px;
+  border-top: 1px solid ${C.border};
+  background: #fff;
+}
+.elev-legend-item { display: flex; align-items: center; gap: 4px; font-size: 8px; color: ${C.muted}; }
+
+/* ── Table ── */
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: ${C.purpleD}; }
+th {
+  padding: 6px 10px;
+  text-align: left;
+  font-family: 'Krona One', sans-serif;
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.6);
+  text-transform: uppercase;
+}
+td { padding: 5.5px 10px; font-size: 11px; border-bottom: 1px solid #f0eef8; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #faf9fe; }
+.td-time { font-family: 'Krona One', sans-serif; font-size: 11px; color: ${C.text}; white-space: nowrap; }
+.td-km { color: ${C.muted}; }
+.td-cho { font-weight: 700; color: #7a5c00; }
+.cho-pill {
+  display: inline-block;
+  background: ${C.yellow};
+  color: ${C.purpleD};
+  font-weight: 700;
+  font-size: 10px;
+  padding: 1.5px 7px;
+  border-radius: 20px;
+}
+.td-fluid { color: #1d4ed8; font-weight: 600; }
+.td-sodium { color: #0d9488; font-weight: 600; }
+.td-caf { font-size: 10px; }
+.totals-row {
+  background: ${C.purpleD};
+  display: flex;
+  gap: 20px;
+  padding: 6px 10px;
+  border-radius: 0 0 6px 6px;
+}
+.totals-item { font-size: 9.5px; color: rgba(255,255,255,0.5); }
+.totals-item strong { color: ${C.yellow}; }
+
+/* ── Day card (pre-comp) ── */
+.day-card { border: 1.5px solid ${C.border}; border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.day-header {
+  background: ${C.purpleD};
+  padding: 7px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.day-title { font-family: 'Krona One', sans-serif; font-size: 10px; color: ${C.yellow}; }
+.day-stats { font-size: 9.5px; color: rgba(255,255,255,0.45); }
+.meal-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 12px; border-bottom: 1px solid #f5f3fc; }
+.meal-row:last-child { border-bottom: none; }
+.meal-timing { font-size: 9.5px; color: ${C.muted}; min-width: 90px; flex-shrink: 0; padding-top: 1px; }
+.meal-desc { font-size: 11px; flex: 1; line-height: 1.35; }
+.meal-carbs { font-family: 'Krona One', sans-serif; font-size: 11px; color: #7a5c00; white-space: nowrap; }
+
+/* ── Breakfast highlight ── */
+.breakfast-card {
+  border: 2px solid ${C.yellow};
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #fffbe6;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+.breakfast-title { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #7a5c00; margin-bottom: 4px; }
+.breakfast-desc { font-size: 11px; color: ${C.sub}; line-height: 1.4; }
+.breakfast-carbs { font-family: 'Krona One', sans-serif; font-size: 22px; color: #7a5c00; flex-shrink: 0; margin-left: 16px; }
+
+/* ── Caffeine cards ── */
+.caff-grid { display: flex; gap: 8px; margin-bottom: 10px; }
+.caff-card { flex: 1; border: 1.5px solid #fde68a; border-radius: 8px; padding: 9px 12px; background: #fffbeb; }
+.caff-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #92400e; margin-bottom: 3px; }
+.caff-value { font-family: 'Krona One', sans-serif; font-size: 18px; color: #b45309; }
+
+/* ── GI table ── */
+.gi-pill { background: ${C.yellow}; color: ${C.purpleD}; font-weight: 700; font-size: 10px; padding: 1.5px 7px; border-radius: 20px; display: inline-block; }
+
+/* ── Risk ── */
+.risk-ok { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 8px; padding: 10px 14px; color: #166534; font-size: 11.5px; display: flex; align-items: center; gap: 8px; }
+.risk-warn { display: flex; gap: 8px; padding: 8px 12px; border-radius: 8px; margin-bottom: 6px; border: 1.5px solid; align-items: flex-start; }
+
+/* ── Athlete notes ── */
+.note-row { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid ${C.border}; }
+.note-row:last-child { border-bottom: none; }
+.note-tag { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding: 2px 8px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+.note-text { font-size: 11px; line-height: 1.45; color: ${C.sub}; }
+
+/* ── Footer ── */
+.footer {
+  border-top: 1.5px solid ${C.border};
+  padding: 7px 14mm;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 9px;
+  color: ${C.muted};
+  background: ${C.offWhite};
+}
+.footer-brand { display: flex; align-items: center; gap: 6px; font-weight: 600; color: ${C.sub}; }
+`;
 }
 
 // ─── Full Report ──────────────────────────────────────────────────────────────
-export function generateFullReportHTML(competition: Competition, editablePlan?: EditablePlan): string {
+async function buildFullReportHTML(competition: Competition, editablePlan?: EditablePlan): Promise<string> {
   const output = competition.strategyOutput as StrategyOutput;
   const cfg = getSportConfig(competition.sport);
   const segments = editablePlan?.segments ?? buildSegments(competition, output);
@@ -224,11 +511,15 @@ export function generateFullReportHTML(competition: Competition, editablePlan?: 
     ? competition.raceData.distance * 1.60934
     : competition.raceData.distance;
 
-  // Generate elevation data
+  // Images
+  const logoURI = await toDataURI('/Asciendelogo.png');
+  const iconURI = await toDataURI('/AppIcon.png');
+
+  // Elevation
   const seed = competition.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const elevPts: ElevationPoint[] = generateElevationProfile(distKm, competition.raceData.elevationGain || 0, seed);
-  const stations = generateHydrationStations(distKm, elevPts, undefined);
-  const stationKms = stations.map(s => s.km);
+  const elevPts = generateElevationProfile(distKm, competition.raceData.elevationGain || 0, seed);
+  const stationsRaw = generateHydrationStations(distKm, elevPts, undefined);
+  const stationData = stationsRaw.map(s => ({ km: s.km, hasFood: s.hasFood }));
   const maxElev = elevPts.length ? Math.max(...elevPts.map(p => p.elevationM)) : 0;
   const minElev = elevPts.length ? Math.min(...elevPts.map(p => p.elevationM)) : 0;
   const climbTotal = elevPts.reduce((acc, p, i) => {
@@ -236,246 +527,257 @@ export function generateFullReportHTML(competition: Competition, editablePlan?: 
     const d = p.elevationM - elevPts[i - 1].elevationM;
     return d > 0 ? acc + d : acc;
   }, 0);
-
-  const elevSVG = buildElevationSVG(elevPts, distKm, Math.round(climbTotal), stationKms);
+  const elevSVG = buildElevationSVG(elevPts, distKm, Math.round(climbTotal), stationData);
 
   // Segment rows
-  const segmentRows = segments.map((s, i) => {
+  const segRows = segments.map((s, i) => {
     const hasCaf = !!s.caffeineNote;
-    const rowBg = hasCaf ? '#fffbeb' : i % 2 !== 0 ? '#fafafa' : '#fff';
-    return `<tr style="background:${rowBg};">
-      <td style="font-family:'Krona One',sans-serif;font-size:11px;font-weight:400;white-space:nowrap;">${formatDuration(s.timeMin)}</td>
-      <td style="color:${BRAND.textMuted};">${s.distanceKm} km</td>
-      <td><span class="pill pill-yellow">${s.choG}g</span></td>
-      <td style="color:#1d4ed8;font-weight:600;">${s.fluidMl}mL</td>
-      <td style="color:#0d9488;font-weight:600;">${s.sodiumMg}mg</td>
-      <td style="font-size:10px;color:${hasCaf ? '#92400e' : '#ccc'};font-weight:${hasCaf ? '600' : '400'};">${s.caffeineNote || '—'}</td>
+    return `<tr style="background:${hasCaf ? '#fffbeb' : i % 2 !== 0 ? '#faf9fe' : '#fff'};">
+      <td class="td-time">${formatDuration(s.timeMin)}</td>
+      <td class="td-km">${s.distanceKm} km</td>
+      <td><span class="cho-pill">${s.choG}g</span></td>
+      <td class="td-fluid">${s.fluidMl}mL</td>
+      <td class="td-sodium">${s.sodiumMg}mg</td>
+      <td class="td-caf" style="color:${hasCaf ? '#92400e' : '#ccc'};font-weight:${hasCaf ? '600' : '400'};">${s.caffeineNote || '—'}</td>
     </tr>`;
   }).join('');
 
-  // Pre-competition days
+  // Pre-comp meals
   const mealsHtml = (meals: DayMeal[]) => meals.map(m =>
-    `<tr>
-      <td style="color:${BRAND.textMuted};font-size:10.5px;white-space:nowrap;padding:5px 10px;">${m.timing}</td>
-      <td style="font-size:11px;padding:5px 10px;">${m.description}</td>
-      <td style="text-align:right;font-family:'Krona One',sans-serif;font-size:11px;color:#b45309;padding:5px 10px;">${m.carbsG}g</td>
-    </tr>`
-  ).join('');
-
-  const preCompDays = output.preComp.plan.map(day =>
-    `<div class="day-card">
-      <div class="day-header">
-        <span class="day-header-title">${day.dayLabel}</span>
-        <span class="day-header-stats">${day.carbsGkg}g CHO/kg &nbsp;·&nbsp; ${day.totalCarbsG}g carbs &nbsp;·&nbsp; ${day.proteinG}g protein &nbsp;·&nbsp; ${day.totalKcal} kcal</span>
-      </div>
-      <table>${mealsHtml(day.meals)}</table>
-      ${day.notes ? `<div style="padding:5px 10px;font-size:10px;color:${BRAND.textMuted};border-top:1px solid #f3f4f6;">${day.notes}</div>` : ''}
+    `<div class="meal-row">
+      <div class="meal-timing">${m.timing}</div>
+      <div class="meal-desc">${m.description}</div>
+      <div class="meal-carbs">${m.carbsG}g</div>
     </div>`
   ).join('');
 
-  const caffeineSection = output.caffeine.totalMg > 0 ? `
+  const preCompDays = output.preComp.plan.map(day => `
+    <div class="day-card">
+      <div class="day-header">
+        <span class="day-title">${day.dayLabel}</span>
+        <span class="day-stats">${day.carbsGkg}g CHO/kg &nbsp;·&nbsp; ${day.totalCarbsG}g carbs &nbsp;·&nbsp; ${day.proteinG}g protein &nbsp;·&nbsp; ${day.totalKcal} kcal</span>
+      </div>
+      ${mealsHtml(day.meals)}
+      ${day.notes ? `<div style="padding:5px 12px;font-size:9.5px;color:${C.muted};border-top:1px solid #f5f3fc;">${day.notes}</div>` : ''}
+    </div>`).join('');
+
+  const cafSection = output.caffeine.totalMg > 0 ? `
     <div class="section">
       <div class="section-title">Caffeine Plan</div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;">
-        <div style="flex:1;border:1.5px solid #fde68a;border-radius:8px;padding:10px 12px;background:#fffbeb;">
-          <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#92400e;margin-bottom:4px;">Total Dose</div>
-          <div style="font-family:'Krona One',sans-serif;font-size:18px;color:#b45309;">${output.caffeine.totalMg}<span style="font-size:10px;font-family:'Jost',sans-serif;color:#92400e;margin-left:2px;">mg &nbsp; ${output.caffeine.mgPerKg}mg/kg</span></div>
+      <div class="caff-grid">
+        <div class="caff-card">
+          <div class="caff-label">Total Dose</div>
+          <div class="caff-value">${output.caffeine.totalMg}<span style="font-family:Jost,sans-serif;font-size:10px;color:#92400e;margin-left:3px;">mg &nbsp;·&nbsp; ${output.caffeine.mgPerKg}mg/kg</span></div>
         </div>
-        <div style="flex:1;border:1.5px solid ${BRAND.border};border-radius:8px;padding:10px 12px;background:${BRAND.lightGray};">
-          <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${BRAND.textMuted};margin-bottom:4px;">Pre-Race Dose</div>
-          <div style="font-family:'Krona One',sans-serif;font-size:18px;">${output.caffeine.preDoseMg}<span style="font-size:10px;font-family:'Jost',sans-serif;color:${BRAND.textMuted};margin-left:2px;">mg · ${output.caffeine.preDoseMinBeforeStart}min before</span></div>
+        <div class="caff-card">
+          <div class="caff-label">Pre-Race</div>
+          <div class="caff-value">${output.caffeine.preDoseMg}<span style="font-family:Jost,sans-serif;font-size:10px;color:#92400e;margin-left:3px;">mg &nbsp;·&nbsp; ${output.caffeine.preDoseMinBeforeStart}min before</span></div>
         </div>
       </div>
       <ul style="padding-left:16px;margin-bottom:8px;">
-        ${output.caffeine.sources.map(s => `<li style="font-size:11px;margin-bottom:3px;color:${BRAND.textSecondary};">${s}</li>`).join('')}
+        ${output.caffeine.sources.map(s => `<li style="font-size:11px;margin-bottom:3px;color:${C.sub};">${s}</li>`).join('')}
       </ul>
-      ${output.caffeine.notes ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:11px;color:#78350f;">${output.caffeine.notes}</div>` : ''}
+      ${output.caffeine.notes ? `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;font-size:11px;color:#78350f;">${output.caffeine.notes}</div>` : ''}
     </div>` : '';
 
   const giSection = output.giTraining ? `
     <div class="section">
-      <div class="section-title">GI Training Protocol — ${output.giTraining.weeks} Weeks &nbsp; <span style="background:${BRAND.yellow}20;color:#7a6300;border:1px solid ${BRAND.yellow}40;padding:1px 6px;border-radius:12px;font-size:8px;font-weight:600;">Target: ${output.giTraining.targetGH}g/h</span></div>
-      <p style="font-size:11px;color:${BRAND.textSecondary};margin-bottom:10px;">${output.giTraining.notes}</p>
+      <div class="section-title">GI Training Protocol &nbsp;—&nbsp; ${output.giTraining.weeks} Weeks <span class="section-badge">Target: ${output.giTraining.targetGH}g/h</span></div>
+      <p style="font-size:11px;color:${C.sub};margin-bottom:10px;">${output.giTraining.notes}</p>
       <table>
         <thead><tr>
           <th>Week</th><th>CHO Target</th><th>Duration</th><th>Format</th><th>Notes</th>
         </tr></thead>
         <tbody>
           ${output.giTraining.sessions.map((s, i) => `
-          <tr style="background:${i % 2 !== 0 ? '#fafafa' : '#fff'};">
-            <td><span style="font-family:'Krona One',sans-serif;font-size:11px;">W${s.week}</span></td>
-            <td><span class="pill pill-yellow">${s.intakeGH}g/h</span></td>
-            <td>${s.duration}</td>
+          <tr style="background:${i % 2 !== 0 ? '#faf9fe' : '#fff'};">
+            <td style="font-family:'Krona One',sans-serif;font-size:11px;">W${s.week}</td>
+            <td><span class="gi-pill">${s.intakeGH}g/h</span></td>
+            <td style="font-size:10.5px;">${s.duration}</td>
             <td style="font-size:10.5px;">${s.format}</td>
-            <td style="font-size:10px;color:${BRAND.textMuted};">${s.notes}</td>
+            <td style="font-size:9.5px;color:${C.muted};">${s.notes}</td>
           </tr>`).join('')}
         </tbody>
       </table>
     </div>` : '';
 
   const risksHtml = (risks: RiskFlag[]) => {
-    if (risks.length === 0) return `<div class="risk-ok">No significant risk factors identified. Good to go.</div>`;
+    if (risks.length === 0) return `<div class="risk-ok">✓ No significant risk factors identified. Ready to race.</div>`;
     return risks.map(r => `
-      <div class="risk-warn" style="background:${r.level === 'critical' ? '#fef2f2' : '#fffbeb'};border:1.5px solid ${r.level === 'critical' ? '#fecaca' : '#fde68a'};">
+      <div class="risk-warn" style="background:${r.level === 'critical' ? '#fef2f2' : '#fffbeb'};border-color:${r.level === 'critical' ? '#fecaca' : '#fde68a'};">
         <span style="font-size:13px;font-weight:800;color:${r.level === 'critical' ? '#dc2626' : '#d97706'};">${r.level === 'critical' ? '!' : '▲'}</span>
         <span style="font-size:11px;color:${r.level === 'critical' ? '#7f1d1d' : '#78350f'};">${r.message}</span>
       </div>`).join('');
   };
 
-  const athleteNotes = (recs?.carbsNote || recs?.hydrationNote || recs?.caffeineNote || recs?.generalNotes) ? `
+  const athleteNotes = (recs?.carbsNote || recs?.hydrationNote || recs?.caffeineNote || recs?.generalNotes || recs?.pacingNote) ? `
     <div class="section">
       <div class="section-title">Athlete Notes</div>
-      ${recs?.carbsNote ? `<div style="margin-bottom:8px;"><span class="pill pill-yellow" style="margin-right:6px;">Carbohydrates</span><span style="font-size:11.5px;">${recs.carbsNote}</span></div>` : ''}
-      ${recs?.hydrationNote ? `<div style="margin-bottom:8px;"><span class="pill pill-blue" style="margin-right:6px;">Hydration</span><span style="font-size:11.5px;">${recs.hydrationNote}</span></div>` : ''}
-      ${recs?.caffeineNote ? `<div style="margin-bottom:8px;"><span class="pill pill-amber" style="margin-right:6px;">Caffeine</span><span style="font-size:11.5px;">${recs.caffeineNote}</span></div>` : ''}
-      ${recs?.generalNotes ? `<div style="padding:10px 14px;background:${BRAND.lightGray};border-radius:8px;font-size:11.5px;border:1.5px solid ${BRAND.border};">${recs.generalNotes}</div>` : ''}
+      ${recs?.pacingNote ? `<div class="note-row"><span class="note-tag" style="background:${C.purple}15;color:${C.purple};">Pacing</span><span class="note-text">${recs.pacingNote}</span></div>` : ''}
+      ${recs?.carbsNote ? `<div class="note-row"><span class="note-tag" style="background:${C.yellow}40;color:#7a5c00;">Carbs</span><span class="note-text">${recs.carbsNote}</span></div>` : ''}
+      ${recs?.hydrationNote ? `<div class="note-row"><span class="note-tag" style="background:#dbeafe;color:#1e40af;">Hydration</span><span class="note-text">${recs.hydrationNote}</span></div>` : ''}
+      ${recs?.caffeineNote ? `<div class="note-row"><span class="note-tag" style="background:#fef3c7;color:#92400e;">Caffeine</span><span class="note-text">${recs.caffeineNote}</span></div>` : ''}
+      ${recs?.generalNotes ? `<div class="note-row"><span class="note-tag" style="background:#f3f4f6;color:#374151;">General</span><span class="note-text">${recs.generalNotes}</span></div>` : ''}
     </div>` : '';
+
+  const logoImg = logoURI ? `<img src="${logoURI}" alt="Asciende" style="height:28px;object-fit:contain;display:block;">` : `<span style="font-family:'Krona One',sans-serif;font-size:14px;color:#fff;">ASCIENDE</span>`;
+  const iconImg = iconURI ? `<img src="${iconURI}" alt="" style="height:32px;width:32px;object-fit:contain;display:block;">` : '';
+  const footerLogo = logoURI ? `<img src="${logoURI}" alt="Asciende" style="height:16px;object-fit:contain;display:block;filter:grayscale(100%) opacity(0.5);">` : `<span>ASCIENDE</span>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${competition.raceName} – Race Plan</title>
+  <title>${competition.raceName} — Race Plan</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>${sharedCSS()}</style>
+  <link href="https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>${css()}</style>
 </head>
 <body>
 <div class="page">
 
-  <!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2.5px solid ${BRAND.dark};">
-    <div style="display:flex;align-items:flex-start;gap:12px;">
-      ${logoSVG(32)}
-      <div>
-        <div style="font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:${BRAND.textMuted};margin-bottom:3px;">Asciende Race Planner</div>
-        <h1 style="font-family:'Krona One',sans-serif;font-size:22px;line-height:1.1;color:${BRAND.dark};">${competition.raceName}</h1>
-        <p style="font-size:11px;color:${BRAND.textSecondary};margin-top:4px;">${cfg.label} &nbsp;·&nbsp; ${competition.raceData.distance} ${competition.raceData.distanceUnit} (${Math.round(distKm * 10) / 10} km) &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C / ${competition.raceData.humidity}% RH &nbsp;·&nbsp; Alt. ${competition.raceData.altitude}m</p>
-      </div>
+  <!-- ══ COVER BAND ══════════════════════════════════════════════════════════ -->
+  <div class="cover-band">
+    <div style="flex:1;">
+      ${logoImg}
+      <div class="cover-race-name">${competition.raceName}</div>
+      <div class="cover-sub">${cfg.label} &nbsp;·&nbsp; ${competition.raceData.distance} ${competition.raceData.distanceUnit} (${Math.round(distKm * 10) / 10} km) &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C / ${competition.raceData.humidity}% RH &nbsp;·&nbsp; Alt. ${competition.raceData.altitude}m</div>
     </div>
-    <div style="text-align:right;">
-      <div style="display:inline-block;background:${BRAND.yellow};border-radius:6px;padding:5px 12px;">
-        <div style="font-family:'Krona One',sans-serif;font-size:10px;color:${BRAND.dark};letter-spacing:0.05em;">RACE PLAN</div>
-      </div>
-      <div style="font-size:10px;color:${BRAND.textMuted};margin-top:4px;">${competition.raceData.raceDate || new Date().toISOString().split('T')[0]}</div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+      ${iconImg}
+      <div class="cover-badge">RACE PLAN</div>
+      <div class="cover-date">${competition.raceData.raceDate || new Date().toISOString().split('T')[0]}</div>
+    </div>
+  </div>
+  <div class="accent-strip"></div>
+
+  <!-- ══ KPI BAR ══════════════════════════════════════════════════════════════ -->
+  <div class="kpi-bar">
+    <div class="kpi-cell">
+      <div class="kpi-label">Intensity</div>
+      <div><span class="kpi-value">${output.pacing.intensityPercent}%</span><span class="kpi-unit">VO2max</span></div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Carbohydrates</div>
+      <div><span class="kpi-value">${output.carbs.recommendedIntakeGH}</span><span class="kpi-unit">g/h</span></div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Fluid</div>
+      <div><span class="kpi-value">${output.hydration.fluidIntakeLH}</span><span class="kpi-unit">L/h</span></div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">Sodium</div>
+      <div><span class="kpi-value">${output.hydration.sodiumMgH}</span><span class="kpi-unit">mg/h</span></div>
     </div>
   </div>
 
-  <!-- ── KEY STATS ───────────────────────────────────────────────────────────── -->
-  <div class="stat-grid">
-    <div class="stat-card">
-      <div class="stat-label" style="color:#f97316;">Intensity</div>
-      <div><span class="stat-value">${output.pacing.intensityPercent}%</span><span class="stat-unit">VO2</span></div>
-    </div>
-    <div class="stat-card" style="border-color:${BRAND.yellow};background:${BRAND.yellow}08;">
-      <div class="stat-label" style="color:#b45309;">Carbs</div>
-      <div><span class="stat-value">${output.carbs.recommendedIntakeGH}</span><span class="stat-unit">g/h</span></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label" style="color:#2563eb;">Fluid</div>
-      <div><span class="stat-value">${output.hydration.fluidIntakeLH}</span><span class="stat-unit">L/h</span></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label" style="color:#0d9488;">Sodium</div>
-      <div><span class="stat-value">${output.hydration.sodiumMgH}</span><span class="stat-unit">mg/h</span></div>
-    </div>
-  </div>
+  <!-- ══ CONTENT ══════════════════════════════════════════════════════════════ -->
+  <div class="content">
 
-  <!-- ── COURSE PROFILE ──────────────────────────────────────────────────────── -->
-  ${elevPts.length > 1 ? `
-  <div class="section">
-    <div class="section-title accent">Course Profile &nbsp;·&nbsp; ${distKm.toFixed(1)} km &nbsp;·&nbsp; +${Math.round(climbTotal)}m gain &nbsp;·&nbsp; ${minElev}–${maxElev}m elevation &nbsp;·&nbsp; ${stationKms.length} aid stations</div>
-    <div style="border:1.5px solid ${BRAND.border};border-radius:8px;padding:10px 10px 6px;background:${BRAND.lightGray};">
-      ${elevSVG}
-      <div style="display:flex;gap:14px;margin-top:4px;justify-content:flex-end;">
-        <div style="display:flex;align-items:center;gap:4px;font-size:8.5px;color:${BRAND.textMuted};">
-          <div style="width:8px;height:8px;border-radius:50%;background:${BRAND.yellow};"></div> Aid station
+    <!-- COURSE PROFILE -->
+    ${elevPts.length > 1 ? `
+    <div class="section">
+      <div class="section-title">Course Profile <span class="section-badge">${distKm.toFixed(1)} km &nbsp;·&nbsp; +${Math.round(climbTotal)}m &nbsp;·&nbsp; ${minElev}–${maxElev}m &nbsp;·&nbsp; ${stationData.length} aid stations</span></div>
+      <div class="elev-box">
+        <div class="elev-header">
+          <div class="elev-stat"><div class="elev-stat-label">Max Elevation</div><div class="elev-stat-value">${maxElev}<span style="font-size:9px;font-family:Jost,sans-serif;color:${C.muted};margin-left:2px;">m</span></div></div>
+          <div class="elev-stat"><div class="elev-stat-label">Total Gain</div><div class="elev-stat-value" style="color:#b45309;">+${Math.round(climbTotal)}<span style="font-size:9px;font-family:Jost,sans-serif;margin-left:2px;">m</span></div></div>
+          <div class="elev-stat"><div class="elev-stat-label">Elev. Range</div><div class="elev-stat-value">${maxElev - minElev}<span style="font-size:9px;font-family:Jost,sans-serif;color:${C.muted};margin-left:2px;">m</span></div></div>
+          <div class="elev-stat"><div class="elev-stat-label">Aid Stations</div><div class="elev-stat-value">${stationData.length}</div></div>
+        </div>
+        <div style="padding:10px 8px 2px;">${elevSVG}</div>
+        <div class="elev-legend">
+          <div class="elev-legend-item"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="${C.yellow}"/></svg> Water only</div>
+          <div class="elev-legend-item"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#34d399"/></svg> Water + Food</div>
+          <div class="elev-legend-item"><svg width="12" height="8"><rect width="12" height="4" y="2" rx="2" fill="#ef444440"/></svg> Climb (&gt;4%)</div>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <!-- PACING -->
+    <div class="section">
+      <div class="section-title">Pacing Strategy</div>
+      <div class="info-row">
+        <div class="info-card accent">
+          <div class="info-card-label" style="color:#7a5c00;">Target Pace</div>
+          <div class="info-card-value" style="font-size:20px;">${formatPace(output.pacing.estimatedPaceMinKm)}<span style="font-family:Jost,sans-serif;font-size:11px;font-weight:400;color:${C.muted};margin-left:4px;">min/km</span></div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-label">Intensity Zone</div>
+          <div class="info-card-value" style="font-size:13px;color:${C.purple};">${output.pacing.intensityZone}</div>
+          <div class="info-card-sub">${output.pacing.intensityPercent}% VO2max</div>
+        </div>
+        <div class="info-card" style="flex:2;">
+          <div class="info-card-label">Recommendation</div>
+          <div style="font-size:11px;color:${C.sub};line-height:1.4;margin-top:2px;">${recs?.pacingNote || output.pacing.recommendation}</div>
         </div>
       </div>
     </div>
-  </div>` : ''}
 
-  <!-- ── PACING ──────────────────────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-title">Pacing Strategy</div>
-    <div style="display:flex;gap:10px;margin-bottom:10px;">
-      <div style="flex:1;border:1.5px solid ${BRAND.border};border-radius:8px;padding:10px 12px;">
-        <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#f97316;margin-bottom:3px;">Target Pace</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:18px;">${formatPace(output.pacing.estimatedPaceMinKm)}<span style="font-size:10px;font-family:'Jost',sans-serif;color:${BRAND.textMuted};margin-left:4px;">min/km</span></div>
-      </div>
-      <div style="flex:1;border:1.5px solid ${BRAND.border};border-radius:8px;padding:10px 12px;">
-        <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${BRAND.textMuted};margin-bottom:3px;">Intensity Zone</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#f97316;">${output.pacing.intensityZone}</div>
-      </div>
-      <div style="flex:2;border:1.5px solid ${BRAND.border};border-radius:8px;padding:10px 12px;">
-        <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:${BRAND.textMuted};margin-bottom:3px;">Recommendation</div>
-        <div style="font-size:11px;color:${BRAND.textSecondary};line-height:1.4;">${recs?.pacingNote || output.pacing.recommendation}</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── RACE EXECUTION TABLE ────────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-title">Race Execution Plan</div>
-    <table>
-      <thead><tr>
-        <th>Time</th>
-        <th>Distance</th>
-        <th style="color:#b45309;">CHO</th>
-        <th style="color:#1d4ed8;">Fluid</th>
-        <th style="color:#0d9488;">Sodium</th>
-        <th>Caffeine Note</th>
-      </tr></thead>
-      <tbody>${segmentRows}</tbody>
-    </table>
-    <div style="display:flex;gap:16px;margin-top:8px;padding:8px 10px;background:${BRAND.lightGray};border-radius:6px;">
-      <span style="font-size:9.5px;color:${BRAND.textMuted};">TOTALS:</span>
-      <span style="font-size:9.5px;"><span style="font-weight:700;color:#b45309;">${output.carbs.totalCarbsG}g</span> CHO</span>
-      <span style="font-size:9.5px;"><span style="font-weight:700;color:#1d4ed8;">${output.hydration.totalFluidL}L</span> fluid</span>
-      <span style="font-size:9.5px;"><span style="font-weight:700;color:#0d9488;">${output.hydration.totalSodiumMg}mg</span> sodium</span>
-      ${output.caffeine.totalMg > 0 ? `<span style="font-size:9.5px;"><span style="font-weight:700;color:#92400e;">${output.caffeine.totalMg}mg</span> caffeine</span>` : ''}
-    </div>
-  </div>
-
-  <!-- ── CAFFEINE ─────────────────────────────────────────────────────────────── -->
-  ${caffeineSection}
-
-  <!-- ── PRE-COMPETITION ─────────────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-title">Pre-Competition Nutrition &nbsp; <span style="background:#ccfbf1;color:#0f766e;border:1px solid #99f6e4;padding:1px 6px;border-radius:12px;font-size:8px;font-weight:600;">${output.preComp.choLoadingDays > 0 ? `${output.preComp.choLoadingDays}-day CHO load` : 'Pre-race meal'}</span></div>
-    <p style="font-size:11px;color:${BRAND.textSecondary};margin-bottom:12px;">${output.preComp.notes}</p>
-    ${preCompDays}
-    <div style="border:1.5px solid ${BRAND.yellow};border-radius:8px;padding:10px 14px;background:${BRAND.yellow}0a;display:flex;justify-content:space-between;align-items:flex-start;margin-top:6px;">
-      <div>
-        <div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#b45309;margin-bottom:3px;">Race Morning Breakfast &nbsp;·&nbsp; ${output.preComp.raceBreakfast.timingBeforeStart}</div>
-        <p style="font-size:11px;color:${BRAND.textSecondary};line-height:1.4;">${output.preComp.raceBreakfast.description}</p>
-      </div>
-      <div style="text-align:right;margin-left:16px;flex-shrink:0;">
-        <div style="font-family:'Krona One',sans-serif;font-size:20px;color:#b45309;">${output.preComp.raceBreakfast.carbsG}g</div>
-        <div style="font-size:9px;color:${BRAND.textMuted};">carbs</div>
+    <!-- RACE EXECUTION -->
+    <div class="section">
+      <div class="section-title">Race Execution Plan</div>
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Distance</th>
+          <th style="color:${C.yellow};">CHO</th>
+          <th style="color:#93c5fd;">Fluid</th>
+          <th style="color:#5eead4;">Sodium</th>
+          <th style="color:rgba(255,255,255,.5);">Caffeine</th>
+        </tr></thead>
+        <tbody>${segRows}</tbody>
+      </table>
+      <div class="totals-row">
+        <span class="totals-item">TOTALS:</span>
+        <span class="totals-item"><strong>${output.carbs.totalCarbsG}g</strong> CHO</span>
+        <span class="totals-item"><strong style="color:#93c5fd;">${output.hydration.totalFluidL}L</strong> fluid</span>
+        <span class="totals-item"><strong style="color:#5eead4;">${output.hydration.totalSodiumMg}mg</strong> sodium</span>
+        ${output.caffeine.totalMg > 0 ? `<span class="totals-item"><strong style="color:#fde68a;">${output.caffeine.totalMg}mg</strong> caffeine</span>` : ''}
       </div>
     </div>
-  </div>
 
-  <!-- ── GI TRAINING ─────────────────────────────────────────────────────────── -->
-  ${giSection}
+    <!-- CAFFEINE -->
+    ${cafSection}
 
-  <!-- ── RISK FLAGS ──────────────────────────────────────────────────────────── -->
-  <div class="section">
-    <div class="section-title">Risk Analysis</div>
-    ${risksHtml(output.risks)}
-  </div>
+    <!-- PRE-COMPETITION -->
+    <div class="section">
+      <div class="section-title">Pre-Competition Nutrition <span class="section-badge">${output.preComp.choLoadingDays > 0 ? `${output.preComp.choLoadingDays}-day CHO load` : 'Pre-race meal'}</span></div>
+      <p style="font-size:11px;color:${C.sub};margin-bottom:12px;">${output.preComp.notes}</p>
+      ${preCompDays}
+      <div class="breakfast-card">
+        <div>
+          <div class="breakfast-title">Race Morning Breakfast &nbsp;·&nbsp; ${output.preComp.raceBreakfast.timingBeforeStart}</div>
+          <div class="breakfast-desc">${output.preComp.raceBreakfast.description}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="breakfast-carbs">${output.preComp.raceBreakfast.carbsG}g</div>
+          <div style="font-size:9px;color:#7a5c00;">carbs</div>
+        </div>
+      </div>
+    </div>
 
-  <!-- ── ATHLETE NOTES ───────────────────────────────────────────────────────── -->
-  ${athleteNotes}
+    <!-- GI TRAINING -->
+    ${giSection}
 
-  <!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+    <!-- RISK FLAGS -->
+    <div class="section">
+      <div class="section-title">Risk Analysis <span class="section-badge">${output.risks.length} flag${output.risks.length !== 1 ? 's' : ''}</span></div>
+      ${risksHtml(output.risks)}
+    </div>
+
+    <!-- ATHLETE NOTES -->
+    ${athleteNotes}
+
+  </div><!-- /content -->
+
+  <!-- ══ FOOTER ═══════════════════════════════════════════════════════════════ -->
   <div class="footer">
-    <div style="display:flex;align-items:center;gap:6px;">
-      ${logoSVG(14)}
-      <span>Generated by Asciende Race Planner &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-GB')}</span>
+    <div class="footer-brand">
+      ${footerLogo}
+      <span>Asciende Race Planner</span>
     </div>
+    <span>${new Date().toLocaleDateString('en-GB')}</span>
     <span>${competition.raceName} &nbsp;·&nbsp; ${cfg.label}</span>
   </div>
 
@@ -485,104 +787,108 @@ export function generateFullReportHTML(competition: Competition, editablePlan?: 
 }
 
 // ─── Cue Card ─────────────────────────────────────────────────────────────────
-export function generateCueCardHTML(competition: Competition, editablePlan?: EditablePlan): string {
+async function buildCueCardHTML(competition: Competition, editablePlan?: EditablePlan): Promise<string> {
   const output = competition.strategyOutput as StrategyOutput;
   const segments = editablePlan?.segments ?? buildSegments(competition, output);
   const durationLabel = formatDuration(competition.raceData.expectedDurationMin);
 
+  const iconURI = await toDataURI('/AppIcon.png');
+
   const segRows = segments.map((s, i) => {
     const hasCaf = !!s.caffeineNote;
-    return `<tr style="background:${hasCaf ? '#fffbeb' : i % 2 === 0 ? '#fff' : '#fafafa'};">
-      <td style="font-family:'Krona One',sans-serif;font-size:10px;white-space:nowrap;border-bottom:1px solid #f0f0f0;padding:5px 8px;">${formatDuration(s.timeMin)}</td>
-      <td style="font-size:9.5px;color:${BRAND.textMuted};border-bottom:1px solid #f0f0f0;padding:5px 8px;">${s.distanceKm}km</td>
-      <td style="font-weight:700;font-size:11px;color:#b45309;border-bottom:1px solid #f0f0f0;padding:5px 8px;">${s.choG}g</td>
-      <td style="font-size:10px;color:#1d4ed8;border-bottom:1px solid #f0f0f0;padding:5px 8px;">${s.fluidMl}mL</td>
-      <td style="font-size:10px;color:#0d9488;border-bottom:1px solid #f0f0f0;padding:5px 8px;">${s.sodiumMg}mg</td>
-      <td style="font-size:9px;font-weight:${hasCaf ? '700' : '400'};color:${hasCaf ? '#92400e' : '#ddd'};border-bottom:1px solid #f0f0f0;padding:5px 8px;">${s.caffeineNote || ''}</td>
+    return `<tr style="background:${hasCaf ? '#fffbeb' : i % 2 === 0 ? '#fff' : '#faf9fe'};">
+      <td style="font-family:'Krona One',sans-serif;font-size:10px;white-space:nowrap;padding:5px 8px;border-bottom:1px solid #f0eef8;">${formatDuration(s.timeMin)}</td>
+      <td style="font-size:9.5px;color:${C.muted};padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.distanceKm}km</td>
+      <td style="padding:5px 8px;border-bottom:1px solid #f0eef8;"><span style="background:${C.yellow};color:${C.purpleD};font-weight:700;font-size:9.5px;padding:1px 5px;border-radius:12px;">${s.choG}g</span></td>
+      <td style="font-size:10px;color:#1d4ed8;font-weight:600;padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.fluidMl}mL</td>
+      <td style="font-size:10px;color:#0d9488;font-weight:600;padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.sodiumMg}mg</td>
+      <td style="font-size:9px;font-weight:${hasCaf ? '700' : '400'};color:${hasCaf ? '#92400e' : '#ddd'};padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.caffeineNote || ''}</td>
     </tr>`;
   }).join('');
 
   const warnings = output.risks.filter(r => r.level === 'critical');
+  const iconImg = iconURI ? `<img src="${iconURI}" alt="" style="height:28px;width:28px;object-fit:contain;">` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${competition.raceName} – Cue Card</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <title>${competition.raceName} — Cue Card</title>
   <link href="https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Krona+One&family=Jost:wght@400;600;700&display=swap');
     @page { size: A5 landscape; margin: 6mm; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Jost', sans-serif; color: #111; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Jost', sans-serif; color: ${C.text}; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table { border-collapse: collapse; width: 100%; }
   </style>
 </head>
 <body>
-<div style="border:2.5px solid ${BRAND.dark};border-radius:10px;padding:10px 12px;height:calc(100vh - 12mm);display:flex;flex-direction:column;">
+<div style="border:2.5px solid ${C.dark};border-radius:10px;overflow:hidden;height:calc(100vh - 12mm);display:flex;flex-direction:column;">
 
-  <!-- Header -->
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:7px;border-bottom:2px solid ${BRAND.dark};">
-    <div style="display:flex;align-items:center;gap:8px;">
-      ${logoSVG(20)}
+  <!-- Header strip -->
+  <div style="background:${C.dark};padding:8px 12px;display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      ${iconImg}
       <div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;line-height:1.1;">${competition.raceName}</div>
-        <div style="font-size:9px;color:${BRAND.textMuted};margin-top:2px;">${competition.raceData.distance} ${competition.raceData.distanceUnit} &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#fff;line-height:1.1;">${competition.raceName}</div>
+        <div style="font-size:8.5px;color:rgba(255,255,255,.4);margin-top:2px;">${competition.raceData.distance} ${competition.raceData.distanceUnit} &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C</div>
       </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <div style="text-align:center;border:1.5px solid ${BRAND.yellow};border-radius:6px;padding:5px 10px;background:${BRAND.yellow}10;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#b45309;margin-bottom:1px;">CHO</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#b45309;">${output.carbs.recommendedIntakeGH}<span style="font-size:9px;font-family:'Jost',sans-serif;">g/h</span></div>
+    <div style="display:flex;gap:6px;">
+      <div style="background:${C.yellow};border-radius:6px;padding:5px 10px;text-align:center;">
+        <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:${C.purpleD};letter-spacing:.08em;">CHO</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:${C.purpleD};">${output.carbs.recommendedIntakeGH}<span style="font-size:8px;font-family:Jost,sans-serif;">g/h</span></div>
       </div>
-      <div style="text-align:center;border:1.5px solid #bfdbfe;border-radius:6px;padding:5px 10px;background:#eff6ff;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#1d4ed8;margin-bottom:1px;">Fluid</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#1d4ed8;">${output.hydration.fluidIntakeLH}<span style="font-size:9px;font-family:'Jost',sans-serif;">L/h</span></div>
+      <div style="background:${C.purpleD};border-radius:6px;padding:5px 10px;text-align:center;border:1px solid rgba(255,255,255,.1);">
+        <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.5);letter-spacing:.08em;">Fluid</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#93c5fd;">${output.hydration.fluidIntakeLH}<span style="font-size:8px;font-family:Jost,sans-serif;">L/h</span></div>
       </div>
-      <div style="text-align:center;border:1.5px solid #99f6e4;border-radius:6px;padding:5px 10px;background:#f0fdfa;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#0f766e;margin-bottom:1px;">Sodium</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#0d9488;">${output.hydration.sodiumMgH}<span style="font-size:9px;font-family:'Jost',sans-serif;">mg/h</span></div>
+      <div style="background:${C.purpleD};border-radius:6px;padding:5px 10px;text-align:center;border:1px solid rgba(255,255,255,.1);">
+        <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.5);letter-spacing:.08em;">Sodium</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#5eead4;">${output.hydration.sodiumMgH}<span style="font-size:8px;font-family:Jost,sans-serif;">mg/h</span></div>
       </div>
-      <div style="text-align:center;border:1.5px solid ${BRAND.border};border-radius:6px;padding:5px 10px;background:#f9fafb;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:${BRAND.textMuted};margin-bottom:1px;">Pace</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;">${formatPace(output.pacing.estimatedPaceMinKm)}<span style="font-size:9px;font-family:'Jost',sans-serif;color:${BRAND.textMuted};">'/km</span></div>
+      <div style="background:${C.purpleD};border-radius:6px;padding:5px 10px;text-align:center;border:1px solid rgba(255,255,255,.1);">
+        <div style="font-size:7px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.5);letter-spacing:.08em;">Pace</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#fff;">${formatPace(output.pacing.estimatedPaceMinKm)}<span style="font-size:8px;color:rgba(255,255,255,.4);">/km</span></div>
       </div>
     </div>
   </div>
+  <div style="height:3px;background:${C.yellow};flex-shrink:0;"></div>
 
   <!-- Body -->
-  <div style="display:grid;grid-template-columns:1fr auto;gap:10px;flex:1;min-height:0;">
+  <div style="flex:1;display:grid;grid-template-columns:1fr 108px;min-height:0;overflow:hidden;">
     <div style="overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <table style="font-size:11px;">
         <thead>
-          <tr style="background:${BRAND.dark};color:#fff;">
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;">TIME</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;">KM</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;color:${BRAND.yellow};">CHO</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;color:#93c5fd;">FLUID</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;color:#5eead4;">Na</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:9px;letter-spacing:.05em;font-weight:400;color:#fde68a;">CAFFEINE</th>
+          <tr style="background:${C.purpleD};">
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.5);">TIME</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.5);">KM</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:${C.yellow};">CHO</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:#93c5fd;">FLUID</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:#5eead4;">Na</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.4);">CAFFEINE</th>
           </tr>
         </thead>
         <tbody>${segRows}</tbody>
       </table>
     </div>
 
-    <div style="min-width:110px;display:flex;flex-direction:column;gap:6px;">
+    <!-- Right panel -->
+    <div style="background:${C.offWhite};border-left:1px solid ${C.border};padding:10px;display:flex;flex-direction:column;gap:8px;">
       ${output.caffeine.totalMg > 0 ? `
-      <div style="border:1.5px solid #fde68a;border-radius:6px;padding:7px 9px;background:#fffbeb;">
-        <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:3px;">Caffeine</div>
-        <div style="font-family:'Krona One',sans-serif;font-size:14px;color:#b45309;">${output.caffeine.totalMg}<span style="font-size:8px;font-family:'Jost',sans-serif;">mg total</span></div>
+      <div style="border:1.5px solid #fde68a;border-radius:6px;padding:7px 8px;background:#fffbeb;">
+        <div style="font-size:7.5px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:2px;letter-spacing:.06em;">Caffeine</div>
+        <div style="font-family:'Krona One',sans-serif;font-size:13px;color:#b45309;">${output.caffeine.totalMg}<span style="font-size:8px;font-family:Jost,sans-serif;">mg</span></div>
         <div style="font-size:8px;color:#92400e;margin-top:2px;">Pre: ${output.caffeine.preDoseMg}mg (${output.caffeine.preDoseMinBeforeStart}min)</div>
       </div>` : ''}
       ${warnings.length > 0 ? `
-      <div style="border:2px solid #dc2626;border-radius:6px;padding:7px 9px;background:#fef2f2;">
-        <div style="font-size:8px;font-weight:800;color:#dc2626;margin-bottom:3px;">ALERTS</div>
-        ${warnings.map(w => `<div style="font-size:8.5px;color:#7f1d1d;margin-bottom:2px;">${w.message}</div>`).join('')}
+      <div style="border:1.5px solid #fecaca;border-radius:6px;padding:7px 8px;background:#fef2f2;">
+        <div style="font-size:7.5px;font-weight:800;color:#dc2626;margin-bottom:3px;text-transform:uppercase;">ALERT</div>
+        ${warnings.map(w => `<div style="font-size:8.5px;color:#7f1d1d;">${w.message}</div>`).join('')}
       </div>` : ''}
-      <div style="border:1.5px solid ${BRAND.border};border-radius:6px;padding:7px 9px;background:#f9fafb;margin-top:auto;">
-        <div style="font-size:8px;color:${BRAND.textMuted};margin-bottom:2px;">TOTALS</div>
-        <div style="font-size:9.5px;font-weight:700;color:#b45309;">${output.carbs.totalCarbsG}g CHO</div>
+      <div style="border:1.5px solid ${C.border};border-radius:6px;padding:7px 8px;background:#fff;margin-top:auto;">
+        <div style="font-size:7.5px;color:${C.muted};font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Race Totals</div>
+        <div style="font-size:9.5px;font-weight:700;color:#7a5c00;">${output.carbs.totalCarbsG}g CHO</div>
         <div style="font-size:9.5px;color:#1d4ed8;">${output.hydration.totalFluidL}L fluid</div>
         <div style="font-size:9.5px;color:#0d9488;">${output.hydration.totalSodiumMg}mg Na</div>
       </div>
@@ -590,8 +896,8 @@ export function generateCueCardHTML(competition: Competition, editablePlan?: Edi
   </div>
 
   <!-- Footer -->
-  <div style="border-top:1px solid ${BRAND.border};padding-top:5px;margin-top:6px;display:flex;justify-content:space-between;font-size:8.5px;color:${BRAND.textMuted};align-items:center;">
-    <div style="display:flex;align-items:center;gap:4px;">${logoSVG(12)} Asciende Race Planner</div>
+  <div style="border-top:1px solid ${C.border};padding:4px 12px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:${C.muted};background:${C.offWhite};flex-shrink:0;">
+    <span style="font-weight:600;color:${C.sub};">Asciende Race Planner</span>
     <span>${competition.raceName} &nbsp;·&nbsp; ${durationLabel}</span>
   </div>
 
@@ -600,20 +906,35 @@ export function generateCueCardHTML(competition: Competition, editablePlan?: Edi
 </html>`;
 }
 
-export function printFullReport(competition: Competition, editablePlan?: EditablePlan): void {
-  const html = generateFullReportHTML(competition, editablePlan);
-  const win = window.open('', '_blank');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => win.print();
+// ─── Public exports ───────────────────────────────────────────────────────────
+export function generateFullReportHTML(competition: Competition, editablePlan?: EditablePlan): string {
+  // sync fallback (not used directly, kept for type compat)
+  return '';
 }
 
-export function printCueCard(competition: Competition, editablePlan?: EditablePlan): void {
-  const html = generateCueCardHTML(competition, editablePlan);
+export function generateCueCardHTML(competition: Competition, editablePlan?: EditablePlan): string {
+  return '';
+}
+
+export async function printFullReport(competition: Competition, editablePlan?: EditablePlan): Promise<void> {
+  const html = await buildFullReportHTML(competition, editablePlan);
   const win = window.open('', '_blank');
   if (!win) return;
   win.document.write(html);
   win.document.close();
-  win.onload = () => win.print();
+  // Wait for fonts to load before printing
+  win.onload = () => {
+    setTimeout(() => win.print(), 800);
+  };
+}
+
+export async function printCueCard(competition: Competition, editablePlan?: EditablePlan): Promise<void> {
+  const html = await buildCueCardHTML(competition, editablePlan);
+  const win = window.open('', '_blank');
+  if (!win) return;
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => {
+    setTimeout(() => win.print(), 800);
+  };
 }
