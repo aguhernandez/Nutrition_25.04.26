@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { ElevationPoint, HydrationStation } from '../../../types/race';
-import { Droplets, Utensils } from 'lucide-react';
+import { usePreferences } from '../../../lib/preferences';
 
 interface Props {
   elevationPoints: ElevationPoint[];
@@ -46,6 +46,9 @@ function getGradientSegments(points: ElevationPoint[]): { start: number; end: nu
 }
 
 export default function ElevationProfile({ elevationPoints, hydrationStations, distanceKm, totalElevationGainM }: Props) {
+  const { theme } = usePreferences();
+  const isDark = theme === 'dark';
+
   const [tooltip, setTooltip] = useState<{ x: number; y: number; km: number; elev: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -79,26 +82,36 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
   const climbSegments = gradientSegments.filter((s) => s.grade >= 4);
   const descentSegments = gradientSegments.filter((s) => s.grade <= -4);
 
+  // Theme colors
+  const gridStroke = isDark ? '#374151' : '#e5e7eb';
+  const tickTextFill = isDark ? '#6b7280' : '#9ca3af';
+  const axisLabelFill = isDark ? '#6b7280' : '#9ca3af';
+  const svgBg = isDark ? '#111827' : '#f8fafc';
+  const tooltipBg = isDark ? '#111827' : '#ffffff';
+  const tooltipBorder = isDark ? '#374151' : '#e5e7eb';
+  const tooltipTextFill = isDark ? '#e5e7eb' : '#1f2937';
+  const legendTextColor = isDark ? 'text-gray-400' : 'text-gray-500';
+
   return (
     <div className="relative w-full">
       <div className="flex items-center gap-6 mb-3 px-1 flex-wrap">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-red-400 to-orange-400 opacity-80" />
-          <span className="text-xs text-gray-400">Climb (&gt;4%)</span>
+          <span className={`text-xs ${legendTextColor}`}>Climb (&gt;4%)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-sky-400 to-blue-400 opacity-80" />
-          <span className="text-xs text-gray-400">Descent (&lt;-4%)</span>
+          <span className={`text-xs ${legendTextColor}`}>Descent (&lt;-4%)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-cyan-400" />
-          <span className="text-xs text-gray-400">Water only</span>
+          <span className={`text-xs ${legendTextColor}`}>Water only</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-emerald-400" />
-          <span className="text-xs text-gray-400">Water + Food</span>
+          <span className={`text-xs ${legendTextColor}`}>Water + Food</span>
         </div>
-        <div className="ml-auto text-xs text-gray-500">
+        <div className={`ml-auto text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
           +{totalElevationGainM}m gain &middot; {maxElev - minElev}m total range
         </div>
       </div>
@@ -107,14 +120,14 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
         ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         className="w-full rounded-xl"
-        style={{ height: 'auto', cursor: 'crosshair' }}
+        style={{ height: 'auto', cursor: 'crosshair', backgroundColor: svgBg }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
       >
         <defs>
           <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#1e40af" stopOpacity="0.08" />
+            <stop offset="0%" stopColor="#60a5fa" stopOpacity={isDark ? '0.35' : '0.25'} />
+            <stop offset="100%" stopColor="#1e40af" stopOpacity={isDark ? '0.08' : '0.04'} />
           </linearGradient>
           <linearGradient id="climbFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#f87171" stopOpacity="0.5" />
@@ -133,8 +146,8 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
           const y = toY(elev);
           return (
             <g key={i}>
-              <line x1={PAD.left} y1={y} x2={PAD.left + PLOT_W} y2={y} stroke="#374151" strokeWidth="1" strokeDasharray="4,4" />
-              <text x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill="#6b7280">{Math.round(elev)}m</text>
+              <line x1={PAD.left} y1={y} x2={PAD.left + PLOT_W} y2={y} stroke={gridStroke} strokeWidth="1" strokeDasharray="4,4" />
+              <text x={PAD.left - 8} y={y + 4} textAnchor="end" fontSize="11" fill={tickTextFill}>{Math.round(elev)}m</text>
             </g>
           );
         })}
@@ -147,8 +160,8 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
           const x = toX(km);
           return (
             <g key={i}>
-              <line x1={x} y1={PAD.top + PLOT_H} x2={x} y2={PAD.top + PLOT_H + 5} stroke="#4b5563" strokeWidth="1" />
-              <text x={x} y={PAD.top + PLOT_H + 18} textAnchor="middle" fontSize="11" fill="#6b7280">{km}km</text>
+              <line x1={x} y1={PAD.top + PLOT_H} x2={x} y2={PAD.top + PLOT_H + 5} stroke={isDark ? '#4b5563' : '#d1d5db'} strokeWidth="1" />
+              <text x={x} y={PAD.top + PLOT_H + 18} textAnchor="middle" fontSize="11" fill={tickTextFill}>{km}km</text>
             </g>
           );
         })}
@@ -193,7 +206,7 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
           return (
             <g key={station.id}>
               <line x1={x} y1={y - 2} x2={x} y2={PAD.top + PLOT_H} stroke={color} strokeWidth="1" strokeDasharray="3,3" strokeOpacity="0.5" />
-              <circle cx={x} cy={y - 2} r="5" fill={color} fillOpacity="0.9" stroke="#1f2937" strokeWidth="1.5" />
+              <circle cx={x} cy={y - 2} r="5" fill={color} fillOpacity="0.9" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="1.5" />
               <text x={x} y={PAD.top + PLOT_H + 32} textAnchor="middle" fontSize="9" fill={color} fontWeight="600">
                 {station.km}
               </text>
@@ -204,17 +217,17 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
         {/* Tooltip crosshair */}
         {tooltip && (
           <g>
-            <line x1={tooltip.x} y1={PAD.top} x2={tooltip.x} y2={PAD.top + PLOT_H} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4,3" />
-            <circle cx={tooltip.x} cy={tooltip.y} r="4" fill="#60a5fa" stroke="#1f2937" strokeWidth="2" />
-            <rect x={tooltip.x + 8} y={tooltip.y - 22} width="80" height="28" rx="6" fill="#111827" fillOpacity="0.95" stroke="#374151" strokeWidth="1" />
-            <text x={tooltip.x + 48} y={tooltip.y - 11} textAnchor="middle" fontSize="11" fill="#e5e7eb" fontWeight="600">{tooltip.km.toFixed(1)} km</text>
+            <line x1={tooltip.x} y1={PAD.top} x2={tooltip.x} y2={PAD.top + PLOT_H} stroke={isDark ? '#9ca3af' : '#9ca3af'} strokeWidth="1" strokeDasharray="4,3" />
+            <circle cx={tooltip.x} cy={tooltip.y} r="4" fill="#60a5fa" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="2" />
+            <rect x={tooltip.x + 8} y={tooltip.y - 22} width="80" height="28" rx="6" fill={tooltipBg} fillOpacity="0.97" stroke={tooltipBorder} strokeWidth="1" />
+            <text x={tooltip.x + 48} y={tooltip.y - 11} textAnchor="middle" fontSize="11" fill={tooltipTextFill} fontWeight="600">{tooltip.km.toFixed(1)} km</text>
             <text x={tooltip.x + 48} y={tooltip.y + 2} textAnchor="middle" fontSize="11" fill="#60a5fa">{tooltip.elev}m</text>
           </g>
         )}
 
         {/* Axis labels */}
-        <text x={PAD.left + PLOT_W / 2} y={H - 2} textAnchor="middle" fontSize="11" fill="#6b7280">Distance (km)</text>
-        <text x={14} y={PAD.top + PLOT_H / 2} textAnchor="middle" fontSize="11" fill="#6b7280" transform={`rotate(-90, 14, ${PAD.top + PLOT_H / 2})`}>Elevation (m)</text>
+        <text x={PAD.left + PLOT_W / 2} y={H - 2} textAnchor="middle" fontSize="11" fill={axisLabelFill}>Distance (km)</text>
+        <text x={14} y={PAD.top + PLOT_H / 2} textAnchor="middle" fontSize="11" fill={axisLabelFill} transform={`rotate(-90, 14, ${PAD.top + PLOT_H / 2})`}>Elevation (m)</text>
       </svg>
     </div>
   );

@@ -1,6 +1,7 @@
 import { Pencil, Check, X } from 'lucide-react';
 import { useState } from 'react';
 import type { EditableSegment } from '../../../types/editablePlan';
+import { usePreferences } from '../../../lib/preferences';
 
 function formatDuration(totalMin: number): string {
   const h = Math.floor(totalMin / 60);
@@ -13,9 +14,10 @@ interface CellProps {
   onSave: (val: string) => void;
   numeric?: boolean;
   colorClass?: string;
+  isDark: boolean;
 }
 
-function EditableCell({ value, onSave, numeric, colorClass }: CellProps) {
+function EditableCell({ value, onSave, numeric, colorClass, isDark }: CellProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value));
 
@@ -42,9 +44,9 @@ function EditableCell({ value, onSave, numeric, colorClass }: CellProps) {
               if (e.key === 'Enter') commit();
               if (e.key === 'Escape') cancel();
             }}
-            className="w-20 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-blue-500 outline-none"
+            className={`w-20 text-xs rounded px-2 py-1 border border-blue-500 outline-none ${isDark ? 'bg-white/10 text-white' : 'bg-white text-gray-800'}`}
           />
-          <button onClick={commit} className="text-green-400 hover:text-green-300">
+          <button onClick={commit} className="text-green-500 hover:text-green-400">
             <Check className="w-3.5 h-3.5" />
           </button>
           <button onClick={cancel} className="text-red-400 hover:text-red-300">
@@ -57,7 +59,7 @@ function EditableCell({ value, onSave, numeric, colorClass }: CellProps) {
 
   return (
     <td
-      className={`px-3 py-2 text-sm cursor-pointer group whitespace-nowrap ${colorClass ?? 'text-gray-300'}`}
+      className={`px-3 py-2 text-sm cursor-pointer group whitespace-nowrap ${colorClass ?? (isDark ? 'text-gray-300' : 'text-gray-600')}`}
       onClick={() => { setDraft(String(value)); setEditing(true); }}
     >
       <span className="relative">
@@ -74,6 +76,9 @@ interface Props {
 }
 
 export default function EditableSegmentTable({ segments, onChange }: Props) {
+  const { theme } = usePreferences();
+  const isDark = theme === 'dark';
+
   const update = (index: number, field: keyof EditableSegment, raw: string) => {
     const updated = segments.map((s, i) => {
       if (i !== index) return s;
@@ -86,13 +91,21 @@ export default function EditableSegmentTable({ segments, onChange }: Props) {
     onChange(updated);
   };
 
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : '#e5e7eb';
+  const headerBg = isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6';
+  const rowAltBg = isDark ? 'rgba(255,255,255,0.02)' : '#fafafa';
+  const cafRowBg = isDark ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.04)';
+  const footerBg = isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb';
+  const textMuted = isDark ? 'text-gray-500' : 'text-gray-400';
+  const textPrimary = isDark ? 'text-white' : 'text-gray-800';
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-700/60">
+    <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${borderColor}` }}>
       <table className="w-full text-xs">
         <thead>
-          <tr className="bg-gray-800/80 border-b border-gray-700/60">
-            <th className="px-3 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wider">Time</th>
-            <th className="px-3 py-2.5 text-left font-semibold text-gray-400 uppercase tracking-wider">Distance</th>
+          <tr style={{ backgroundColor: headerBg, borderBottom: `1px solid ${borderColor}` }}>
+            <th className={`px-3 py-2.5 text-left font-semibold uppercase tracking-wider ${textMuted}`}>Time</th>
+            <th className={`px-3 py-2.5 text-left font-semibold uppercase tracking-wider ${textMuted}`}>Distance</th>
             <th className="px-3 py-2.5 text-left font-semibold text-yellow-500 uppercase tracking-wider">CHO (g)</th>
             <th className="px-3 py-2.5 text-left font-semibold text-blue-400 uppercase tracking-wider">Fluid (mL)</th>
             <th className="px-3 py-2.5 text-left font-semibold text-teal-400 uppercase tracking-wider">Sodium (mg)</th>
@@ -103,43 +116,50 @@ export default function EditableSegmentTable({ segments, onChange }: Props) {
           {segments.map((seg, i) => (
             <tr
               key={i}
-              className={`border-b border-gray-800/40 last:border-0 ${seg.caffeineNote ? 'bg-amber-500/5' : i % 2 === 0 ? 'bg-transparent' : 'bg-gray-800/20'}`}
+              style={{
+                backgroundColor: seg.caffeineNote ? cafRowBg : i % 2 !== 0 ? rowAltBg : 'transparent',
+                borderBottom: i < segments.length - 1 ? `1px solid ${borderColor}` : 'none',
+              }}
             >
-              <td className="px-3 py-2 text-sm font-bold text-white whitespace-nowrap">
+              <td className={`px-3 py-2 text-sm font-bold whitespace-nowrap ${textPrimary}`}>
                 {formatDuration(seg.timeMin)}
               </td>
-              <td className="px-3 py-2 text-sm text-gray-500 whitespace-nowrap">
+              <td className={`px-3 py-2 text-sm whitespace-nowrap ${textMuted}`}>
                 {seg.distanceKm} km
               </td>
               <EditableCell
                 value={seg.choG}
                 numeric
-                colorClass="text-yellow-300 font-semibold"
+                colorClass="text-yellow-500 font-semibold"
                 onSave={(v) => update(i, 'choG', v)}
+                isDark={isDark}
               />
               <EditableCell
                 value={seg.fluidMl}
                 numeric
-                colorClass="text-blue-300"
+                colorClass="text-blue-400"
                 onSave={(v) => update(i, 'fluidMl', v)}
+                isDark={isDark}
               />
               <EditableCell
                 value={seg.sodiumMg}
                 numeric
-                colorClass="text-teal-300"
+                colorClass="text-teal-400"
                 onSave={(v) => update(i, 'sodiumMg', v)}
+                isDark={isDark}
               />
               <EditableCell
                 value={seg.caffeineNote}
-                colorClass={seg.caffeineNote ? 'text-amber-300 font-semibold' : 'text-gray-600'}
+                colorClass={seg.caffeineNote ? 'text-amber-400 font-semibold' : textMuted}
                 onSave={(v) => update(i, 'caffeineNote', v)}
+                isDark={isDark}
               />
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="px-4 py-2 bg-gray-800/30 border-t border-gray-700/40">
-        <p className="text-xs text-gray-600">Click any value to edit. Changes are saved locally and reflected in PDF export.</p>
+      <div className={`px-4 py-2 border-t`} style={{ backgroundColor: footerBg, borderColor }}>
+        <p className={`text-xs ${textMuted}`}>Click any value to edit. Changes are saved locally and reflected in PDF export.</p>
       </div>
     </div>
   );

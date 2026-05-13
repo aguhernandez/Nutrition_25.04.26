@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Map, Mountain, Droplets, Save, Loader2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
-import type { RaceData, RaceCatalogEntry, HydrationStation, ElevationPoint, RaceCourseProfile } from '../../../types/race';
+import { Mountain, Droplets, Save, Loader2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import type { RaceData, RaceCatalogEntry, HydrationStation, ElevationPoint } from '../../../types/race';
 import { generateElevationProfile, generateHydrationStations } from '../../../utils/elevationGenerator';
 import ElevationProfile from './ElevationProfile';
 import HydrationStationEditor from './HydrationStationEditor';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../lib/auth';
+import { usePreferences } from '../../../lib/preferences';
 
 interface Props {
   raceData: RaceData;
@@ -16,6 +17,9 @@ type ViewTab = 'elevation' | 'stations';
 
 export default function RaceCourseView({ raceData, catalogEntry }: Props) {
   const { user } = useAuth();
+  const { theme } = usePreferences();
+  const isDark = theme === 'dark';
+
   const [activeTab, setActiveTab] = useState<ViewTab>('elevation');
   const [collapsed, setCollapsed] = useState(false);
   const [elevationPoints, setElevationPoints] = useState<ElevationPoint[]>([]);
@@ -107,65 +111,107 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
     return delta > 0 ? acc + delta : acc;
   }, 0);
 
+  const cardBg = isDark ? 'rgba(255,255,255,0.03)' : '#ffffff';
+  const cardBorder = isDark ? '1px solid rgba(255,255,255,0.08)' : '2px solid #e5e7eb';
+  const cardShadow = isDark ? 'none' : '0 2px 10px rgba(81,65,99,0.06)';
+  const textPrimary = isDark ? 'text-white' : 'text-[#1f2937]';
+  const textMuted = isDark ? 'text-gray-500' : 'text-gray-400';
+  const hoverRow = isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-[#fafafa]';
+
+  const innerBg = isDark ? 'rgba(255,255,255,0.04)' : '#f9fafb';
+  const innerBorder = isDark ? 'rgba(255,255,255,0.07)' : '#e5e7eb';
+
+  const statBg = isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6';
+
+  const tabBarBg = isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6';
+
   return (
-    <div className="bg-white rounded-2xl overflow-hidden print:hidden" style={{ border: '2px solid #e5e7eb', boxShadow: '0 2px 10px rgba(81,65,99,0.06)' }}>
+    <div
+      className="rounded-2xl overflow-hidden print:hidden transition-colors"
+      style={{ backgroundColor: cardBg, border: cardBorder, boxShadow: cardShadow }}
+    >
       {/* Header */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="w-full flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors"
+        className={`w-full flex items-center justify-between px-6 py-4 transition-colors ${hoverRow}`}
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
             <Mountain className="w-4 h-4 text-white" />
           </div>
-          <span className="font-body font-semibold text-[#1f2937]">Course Profile & Hydration Stations</span>
-          <span className="font-body text-xs bg-[#f3f4f6] text-[#9ca3af] px-2 py-0.5 rounded-full">
+          <span className={`font-body font-semibold ${textPrimary}`}>Course Profile & Hydration Stations</span>
+          <span
+            className="font-body text-xs px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#f3f4f6', color: isDark ? 'rgba(255,255,255,0.4)' : '#9ca3af' }}
+          >
             {distanceKm.toFixed(1)} km &middot; +{Math.round(climbCount)}m
           </span>
         </div>
         <div>
-          {collapsed ? <ChevronDown className="w-4 h-4 text-[#9ca3af]" /> : <ChevronUp className="w-4 h-4 text-[#9ca3af]" />}
+          {collapsed
+            ? <ChevronDown className={`w-4 h-4 ${textMuted}`} />
+            : <ChevronUp className={`w-4 h-4 ${textMuted}`} />
+          }
         </div>
       </button>
 
       {!collapsed && (
         <div className="px-6 pb-6 space-y-4">
           {/* Tab bar */}
-          <div className="flex gap-1 bg-gray-900/60 rounded-xl p-1 w-fit">
+          <div className="flex gap-1 rounded-xl p-1 w-fit" style={{ backgroundColor: tabBarBg }}>
             <button
               onClick={() => setActiveTab('elevation')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'elevation' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' : 'text-gray-500 hover:text-gray-300'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'elevation'
+                  ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                  : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+              }`}
             >
               <Mountain className="w-3.5 h-3.5" />
               Orography
             </button>
             <button
               onClick={() => setActiveTab('stations')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'stations' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-gray-500 hover:text-gray-300'}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'stations'
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                  : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+              }`}
             >
               <Droplets className="w-3.5 h-3.5" />
               Aid Stations
-              <span className={`text-xs rounded-full px-1.5 py-0.5 ${activeTab === 'stations' ? 'bg-cyan-500/30 text-cyan-300' : 'bg-gray-700 text-gray-500'}`}>
+              <span
+                className={`text-xs rounded-full px-1.5 py-0.5 ${
+                  activeTab === 'stations'
+                    ? 'bg-cyan-500/30 text-cyan-400'
+                    : isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-200 text-gray-500'
+                }`}
+              >
                 {stations.length}
               </span>
             </button>
           </div>
 
           {activeTab === 'elevation' && (
-            <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-700/50">
+            <div
+              className="rounded-2xl p-4"
+              style={{ backgroundColor: innerBg, border: `1px solid ${innerBorder}` }}
+            >
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">Max Elevation</div>
-                  <div className="text-lg font-bold text-white">{maxElev}<span className="text-xs text-gray-500 ml-1">m</span></div>
-                </div>
-                <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">Total Gain</div>
-                  <div className="text-lg font-bold text-red-400">+{Math.round(climbCount)}<span className="text-xs text-gray-500 ml-1">m</span></div>
-                </div>
-                <div className="bg-gray-800/60 rounded-xl p-3 text-center">
-                  <div className="text-xs text-gray-500 mb-1">Elev. Range</div>
-                  <div className="text-lg font-bold text-white">{maxElev - minElev}<span className="text-xs text-gray-500 ml-1">m</span></div>
-                </div>
+                {[
+                  { label: 'Max Elevation', value: maxElev, color: textPrimary },
+                  { label: 'Total Gain', value: `+${Math.round(climbCount)}`, color: 'text-red-400' },
+                  { label: 'Elev. Range', value: maxElev - minElev, color: textPrimary },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-xl p-3 text-center"
+                    style={{ backgroundColor: statBg }}
+                  >
+                    <div className={`text-xs mb-1 ${textMuted}`}>{stat.label}</div>
+                    <div className={`text-lg font-bold ${stat.color}`}>{stat.value}<span className={`text-xs ml-1 ${textMuted}`}>m</span></div>
+                  </div>
+                ))}
               </div>
 
               {elevationPoints.length > 0 && (
@@ -178,7 +224,7 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
               )}
 
               {!catalogEntry && (
-                <p className="text-xs text-gray-600 mt-3 text-center">
+                <p className={`text-xs mt-3 text-center ${textMuted}`}>
                   Profile is algorithmically generated from total elevation gain. Select a race from the catalog for more accurate data.
                 </p>
               )}
@@ -186,8 +232,14 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
           )}
 
           {activeTab === 'stations' && (
-            <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-700/50 space-y-4">
-              <div className="bg-gray-800/40 rounded-xl p-4">
+            <div
+              className="rounded-2xl p-4 space-y-4"
+              style={{ backgroundColor: innerBg, border: `1px solid ${innerBorder}` }}
+            >
+              <div
+                className="rounded-xl p-4"
+                style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#ffffff', border: `1px solid ${innerBorder}` }}
+              >
                 <ElevationProfile
                   elevationPoints={elevationPoints}
                   hydrationStations={stations}
@@ -196,15 +248,15 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
                 />
               </div>
 
-              <div className="border-t border-gray-700/50 pt-4">
+              <div className={`border-t pt-4 ${isDark ? 'border-white/5' : 'border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-sm font-semibold text-white">Edit Hydration Stations</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Aid station locations may change year to year. Adjust as needed.</p>
+                    <p className={`text-sm font-semibold ${textPrimary}`}>Edit Hydration Stations</p>
+                    <p className={`text-xs mt-0.5 ${textMuted}`}>Aid station locations may change year to year. Adjust as needed.</p>
                   </div>
                   <button
                     onClick={handleReset}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    className={`flex items-center gap-1.5 text-xs transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Reset to default
@@ -218,11 +270,15 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
               </div>
 
               {user && catalogEntry && (
-                <div className="flex justify-end pt-2 border-t border-gray-700/50">
+                <div className={`flex justify-end pt-2 border-t ${isDark ? 'border-white/5' : 'border-gray-200'}`}>
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${savedOk ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/30'}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                      savedOk
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-sky-500/20 text-sky-400 border border-sky-500/30 hover:bg-sky-500/30'
+                    }`}
                   >
                     {saving ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>

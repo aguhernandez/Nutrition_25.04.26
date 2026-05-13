@@ -3,6 +3,7 @@ import { Flame, Droplets, Zap, ChevronDown, ChevronUp, RefreshCw } from 'lucide-
 import type { NutritionProduct, NutritionCategory, RaceNutritionPlan, FuelType } from '../../../types/nutrition';
 import type { Competition } from '../../../types/race';
 import { supabase } from '../../../lib/supabase';
+import { usePreferences } from '../../../lib/preferences';
 import ProductSelector from './ProductSelector';
 
 interface Props {
@@ -18,6 +19,9 @@ const FUEL_TYPES: { value: FuelType; label: string; desc: string }[] = [
 ];
 
 export default function NutritionPlanCustomizer({ competition, onChange }: Props) {
+  const { theme } = usePreferences();
+  const isDark = theme === 'dark';
+
   const [collapsed, setCollapsed] = useState(false);
   const [products, setProducts] = useState<NutritionProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,8 +47,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   }, []);
 
   useEffect(() => {
-    const plan = buildPlan();
-    onChange(plan);
+    onChange(buildPlan());
   }, [primaryFuelType, primaryGelProduct, primaryDrinkProduct, electrolyteProduct, caffeineProduct]);
 
   function buildPlan(): RaceNutritionPlan {
@@ -91,21 +94,45 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   const mainProduct = primaryFuelType === 'liquid' ? primaryDrinkProduct : primaryGelProduct;
   const servingsNeeded = mainProduct && mainProduct.carbs_g > 0 ? Math.ceil(totalCarbsTarget / mainProduct.carbs_g) : null;
 
+  const cardBg = isDark ? 'rgba(255,255,255,0.03)' : '#ffffff';
+  const cardBorder = isDark ? '1px solid rgba(255,255,255,0.08)' : '2px solid #e5e7eb';
+  const cardShadow = isDark ? 'none' : '0 2px 10px rgba(81,65,99,0.06)';
+
+  const textPrimary = isDark ? 'text-white' : 'text-[#1f2937]';
+  const textMuted = isDark ? 'text-gray-500' : 'text-gray-400';
+  const textSecondary = isDark ? 'text-gray-400' : 'text-gray-500';
+
+  const innerBg = isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb';
+  const innerBorder = isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid #e5e7eb';
+
+  const labelCls = `text-xs uppercase tracking-wider font-semibold ${textMuted}`;
+
   return (
-    <div className="bg-white rounded-2xl overflow-hidden print:hidden" style={{ border: '2px solid #e5e7eb', boxShadow: '0 2px 10px rgba(81,65,99,0.06)' }}>
+    <div
+      className="rounded-2xl overflow-hidden print:hidden transition-colors"
+      style={{ backgroundColor: cardBg, border: cardBorder, boxShadow: cardShadow }}
+    >
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="w-full flex items-center justify-between px-6 py-4 hover:bg-[#fafafa] transition-colors"
+        className={`w-full flex items-center justify-between px-6 py-4 transition-colors ${isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-[#fafafa]'}`}
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
             <Flame className="w-4 h-4 text-white" />
           </div>
-          <span className="font-body font-semibold text-[#1f2937]">Nutrition Plan</span>
-          <span className="font-body text-xs bg-[#f3f4f6] text-[#9ca3af] px-2 py-0.5 rounded-full">customize &amp; export</span>
+          <span className={`font-body font-semibold ${textPrimary}`}>Nutrition Plan</span>
+          <span
+            className="font-body text-xs px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#f3f4f6', color: isDark ? 'rgba(255,255,255,0.4)' : '#9ca3af' }}
+          >
+            customize &amp; export
+          </span>
         </div>
         <div>
-          {collapsed ? <ChevronDown className="w-4 h-4 text-[#9ca3af]" /> : <ChevronUp className="w-4 h-4 text-[#9ca3af]" />}
+          {collapsed
+            ? <ChevronDown className={`w-4 h-4 ${textMuted}`} />
+            : <ChevronUp className={`w-4 h-4 ${textMuted}`} />
+          }
         </div>
       </button>
 
@@ -113,48 +140,59 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
         <div className="px-6 pb-6 space-y-5">
           {/* Targets summary */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 text-center">
-              <div className="text-xs text-yellow-400 font-semibold mb-1">Carb Target</div>
-              <div className="text-xl font-bold text-white">{totalCarbsTarget}<span className="text-xs text-gray-500 ml-1">g total</span></div>
-              <div className="text-xs text-gray-500">{targetCarbsGH}g/h</div>
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)' }}>
+              <div className="text-xs text-yellow-500 font-semibold mb-1">Carb Target</div>
+              <div className={`text-xl font-bold ${textPrimary}`}>{totalCarbsTarget}<span className={`text-xs ml-1 ${textMuted}`}>g total</span></div>
+              <div className={`text-xs ${textMuted}`}>{targetCarbsGH}g/h</div>
             </div>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
               <div className="text-xs text-blue-400 font-semibold mb-1">Sodium Target</div>
-              <div className="text-xl font-bold text-white">{Math.round(sodiumTarget / 1000 * 10) / 10}<span className="text-xs text-gray-500 ml-1">g total</span></div>
-              <div className="text-xs text-gray-500">{output?.hydration.sodiumMgH ?? 0}mg/h</div>
+              <div className={`text-xl font-bold ${textPrimary}`}>{Math.round(sodiumTarget / 1000 * 10) / 10}<span className={`text-xs ml-1 ${textMuted}`}>g total</span></div>
+              <div className={`text-xs ${textMuted}`}>{output?.hydration.sodiumMgH ?? 0}mg/h</div>
             </div>
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-center">
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
               <div className="text-xs text-amber-400 font-semibold mb-1">Duration</div>
-              <div className="text-xl font-bold text-white">{Math.floor(durationH)}<span className="text-xs text-gray-500">h </span>{Math.round((durationH % 1) * 60)}<span className="text-xs text-gray-500">m</span></div>
+              <div className={`text-xl font-bold ${textPrimary}`}>{Math.floor(durationH)}<span className={`text-xs ${textMuted}`}>h </span>{Math.round((durationH % 1) * 60)}<span className={`text-xs ${textMuted}`}>m</span></div>
             </div>
           </div>
 
           {/* Primary fuel type */}
           <div>
-            <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Primary Fuel Type</div>
+            <div className={`${labelCls} mb-3`}>Primary Fuel Type</div>
             <div className="grid grid-cols-2 gap-2">
-              {FUEL_TYPES.map((ft) => (
-                <button
-                  key={ft.value}
-                  onClick={() => setPrimaryFuelType(ft.value)}
-                  className={`text-left p-3 rounded-xl border transition-all ${primaryFuelType === ft.value ? 'border-yellow-500/50 bg-yellow-500/10' : 'border-gray-700/50 bg-gray-800/30 hover:bg-gray-800/60'}`}
-                >
-                  <div className={`text-sm font-semibold mb-0.5 ${primaryFuelType === ft.value ? 'text-yellow-300' : 'text-white'}`}>{ft.label}</div>
-                  <div className="text-xs text-gray-500 leading-relaxed">{ft.desc}</div>
-                </button>
-              ))}
+              {FUEL_TYPES.map((ft) => {
+                const isSelected = primaryFuelType === ft.value;
+                return (
+                  <button
+                    key={ft.value}
+                    onClick={() => setPrimaryFuelType(ft.value)}
+                    className="text-left p-3 rounded-xl border transition-all"
+                    style={{
+                      border: isSelected
+                        ? '1px solid rgba(234,179,8,0.5)'
+                        : isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb',
+                      backgroundColor: isSelected
+                        ? 'rgba(234,179,8,0.1)'
+                        : isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+                    }}
+                  >
+                    <div className={`text-sm font-semibold mb-0.5 ${isSelected ? 'text-yellow-500' : textPrimary}`}>{ft.label}</div>
+                    <div className={`text-xs leading-relaxed ${textMuted}`}>{ft.desc}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Product selection */}
           <div className="space-y-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Select Products</div>
+            <div className={labelCls}>Select Products</div>
 
             {/* Main fuel product */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              <label className={`block text-sm font-medium mb-1.5 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 {primaryFuelType === 'liquid' ? 'Sport Drink' : primaryFuelType === 'gel' ? 'Energy Gel' : primaryFuelType === 'chew' ? 'Energy Chew' : 'Energy Bar'}
-                <span className="text-xs text-gray-500 ml-2 font-normal">primary source of carbs</span>
+                <span className={`text-xs ml-2 font-normal ${textMuted}`}>primary source of carbs</span>
               </label>
               <ProductSelector
                 products={products}
@@ -167,18 +205,18 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                 }}
               />
               {servingsNeeded !== null && (
-                <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                <p className={`text-xs mt-1.5 flex items-center gap-1 ${textMuted}`}>
                   <RefreshCw className="w-3 h-3" />
-                  Estimated <span className="text-yellow-400 font-semibold">{servingsNeeded} servings</span> needed to meet {totalCarbsTarget}g carb target
+                  Estimated <span className="text-yellow-500 font-semibold">{servingsNeeded} servings</span> needed to meet {totalCarbsTarget}g carb target
                 </p>
               )}
             </div>
 
             {/* Electrolyte supplement */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+              <label className={`block text-sm font-medium mb-1.5 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                 Electrolyte Supplement
-                <span className="text-xs text-gray-500 ml-2 font-normal">optional, for extra sodium</span>
+                <span className={`text-xs ml-2 font-normal ${textMuted}`}>optional, for extra sodium</span>
               </label>
               <ProductSelector
                 products={products}
@@ -188,17 +226,17 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                 onSelect={setElectrolyteProduct}
               />
               {electrolyteProduct && (
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <p className={`text-xs mt-1 flex items-center gap-1 ${textMuted}`}>
                   <Droplets className="w-3 h-3 text-blue-400" />
                   ~{Math.round(durationH * 2)} × {electrolyteProduct.sodium_mg}mg Na = <span className="text-blue-400 font-semibold">{Math.round(durationH * 2 * electrolyteProduct.sodium_mg)}mg additional sodium</span>
                 </p>
               )}
             </div>
 
-            {/* Caffeine product (if using caffeine) */}
+            {/* Caffeine product */}
             {output?.caffeine && output.caffeine.totalMg > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                <label className={`block text-sm font-medium mb-1.5 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                   Caffeine Product
                   <span className="text-xs text-amber-400 ml-2 font-normal">target: {output.caffeine.totalMg}mg total</span>
                 </label>
@@ -209,7 +247,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                   onSelect={setCaffeineProduct}
                 />
                 {caffeineProduct && (
-                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <p className={`text-xs mt-1 flex items-center gap-1 ${textMuted}`}>
                     <Zap className="w-3 h-3 text-amber-400" />
                     {caffeineProduct.caffeine_mg}mg per serving · use at key race moments
                   </p>
@@ -220,50 +258,58 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
 
           {/* Live preview */}
           {mainProduct && (
-            <div className="bg-gray-800/40 border border-gray-700/50 rounded-2xl p-4">
-              <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Race Nutrition Summary</div>
+            <div
+              className="rounded-2xl p-4"
+              style={{ backgroundColor: innerBg, border: innerBorder }}
+            >
+              <div className={`text-xs uppercase tracking-wider font-semibold mb-3 ${textMuted}`}>Race Nutrition Summary</div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">Primary fuel</span>
-                  <span className="font-semibold text-white">{mainProduct.full_name}</span>
+                  <span className={textSecondary}>Primary fuel</span>
+                  <span className={`font-semibold ${textPrimary}`}>{mainProduct.full_name}</span>
                 </div>
                 {servingsNeeded !== null && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Servings needed</span>
-                    <span className="font-semibold text-yellow-300">{servingsNeeded} × {mainProduct.carbs_g}g = {servingsNeeded * mainProduct.carbs_g}g carbs</span>
+                    <span className={textSecondary}>Servings needed</span>
+                    <span className="font-semibold text-yellow-500">{servingsNeeded} × {mainProduct.carbs_g}g = {servingsNeeded * mainProduct.carbs_g}g carbs</span>
                   </div>
                 )}
                 {electrolyteProduct && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Electrolytes</span>
-                    <span className="font-semibold text-blue-300">{Math.round(durationH * 2)} × {electrolyteProduct.product_name}</span>
+                    <span className={textSecondary}>Electrolytes</span>
+                    <span className="font-semibold text-blue-400">{Math.round(durationH * 2)} × {electrolyteProduct.product_name}</span>
                   </div>
                 )}
                 {caffeineProduct && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Caffeine</span>
-                    <span className="font-semibold text-amber-300">{caffeineProduct.product_name} · {caffeineProduct.caffeine_mg}mg</span>
+                    <span className={textSecondary}>Caffeine</span>
+                    <span className="font-semibold text-amber-400">{caffeineProduct.product_name} · {caffeineProduct.caffeine_mg}mg</span>
                   </div>
                 )}
               </div>
 
               {mainProduct.flavors && mainProduct.flavors.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-700/50">
-                  <div className="text-xs text-gray-500 mb-2">Available flavors</div>
+                <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-200'}`}>
+                  <div className={`text-xs mb-2 ${textMuted}`}>Available flavors</div>
                   <div className="flex flex-wrap gap-1.5">
                     {mainProduct.flavors.slice(0, 8).map((f) => (
-                      <span key={f} className="text-xs bg-gray-700/60 text-gray-300 px-2 py-0.5 rounded-full">{f}</span>
+                      <span
+                        key={f}
+                        className={`text-xs px-2 py-0.5 rounded-full ${isDark ? 'bg-white/8 text-gray-300' : 'bg-gray-100 text-gray-600'}`}
+                      >
+                        {f}
+                      </span>
                     ))}
                     {mainProduct.flavors.length > 8 && (
-                      <span className="text-xs text-gray-600">+{mainProduct.flavors.length - 8} more</span>
+                      <span className={`text-xs ${textMuted}`}>+{mainProduct.flavors.length - 8} more</span>
                     )}
                   </div>
                 </div>
               )}
 
               {mainProduct.notes && (
-                <div className="mt-3 pt-3 border-t border-gray-700/50">
-                  <p className="text-xs text-gray-500 leading-relaxed">{mainProduct.notes}</p>
+                <div className={`mt-3 pt-3 border-t ${isDark ? 'border-white/5' : 'border-gray-200'}`}>
+                  <p className={`text-xs leading-relaxed ${textMuted}`}>{mainProduct.notes}</p>
                 </div>
               )}
             </div>
