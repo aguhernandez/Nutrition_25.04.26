@@ -585,11 +585,14 @@ export function pushRacePlan(
   athleteEmailOrId: string,
   payload: HubRacePlanPayload
 ): Promise<{ success: boolean; id?: string }> {
+  const bodyStr = JSON.stringify(payload);
+  console.log('[pushRacePlan] body que se envía (race_date):', JSON.parse(bodyStr).race_date);
+  console.log('[pushRacePlan] body completo:', bodyStr.substring(0, 300));
   return rateLimiter.execute(() =>
     fetch(`${PROXY_BASE}/push-race-plan?${athleteParam(athleteEmailOrId)}`, {
       method: 'POST',
       headers: getProxyHeaders(),
-      body: JSON.stringify(payload),
+      body: bodyStr,
     }).then((r) => handleResponse<{ success: boolean; id?: string }>(r))
   );
 }
