@@ -20,12 +20,17 @@ import TagSelector from '../shared/TagSelector';
 
 type PlannerStep = 'sport' | 'questionnaire' | 'results';
 
-export default function RacePlanner() {
+interface Props {
+  initialCompetition?: Competition;
+  onBackToSaved?: () => void;
+}
+
+export default function RacePlanner({ initialCompetition, onBackToSaved }: Props = {}) {
   const { user, profile } = useAuth();
-  const [step, setStep] = useState<PlannerStep>('sport');
-  const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
-  const [competition, setCompetition] = useState<Competition | null>(null);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [step, setStep] = useState<PlannerStep>(initialCompetition ? 'results' : 'sport');
+  const [selectedSport, setSelectedSport] = useState<Sport | null>(initialCompetition?.sport ?? null);
+  const [competition, setCompetition] = useState<Competition | null>(initialCompetition ?? null);
+  const [savedId, setSavedId] = useState<string | null>(initialCompetition?.id ?? null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [catalogEntry, setCatalogEntry] = useState<RaceCatalogEntry | undefined>(undefined);
   const [raceTags, setRaceTags] = useState<Tag[]>([]);
@@ -61,36 +66,56 @@ export default function RacePlanner() {
     if (!competition) return;
     const athleteId = profile?.hub_user_id || user?.id || null;
 
-    // 1. Save to Supabase
-    const { data, error } = await supabase
-      .from('competitions')
-      .insert({
-        user_id: null,
-        athlete_id: athleteId,
-        sport: competition.sport,
-        race_name: competition.raceName,
-        race_data: competition.raceData,
-        athlete_data: competition.athleteData,
-        strategy_preferences: competition.strategyPreferences,
-        strategy_output: competition.strategyOutput,
-        race_date: competition.raceDate || null,
-      })
-      .select('id')
-      .maybeSingle();
-    if (error) console.error('Save race error:', error);
-
-    if (data?.id) {
-      setSavedId(data.id);
-      if (raceTags.length > 0) {
-        await setTagsForCompetition(data.id, raceTags.map((t) => t.id));
-      }
-      if (profile?.email && profile?.id) {
-        syncAthleteTagsToHub(profile.email, profile.id);
+    if (savedId) {
+      // Update existing record
+      const { error } = await supabase
+        .from('competitions')
+        .update({
+          sport: competition.sport,
+          race_name: competition.raceName,
+          race_data: competition.raceData,
+          athlete_data: competition.athleteData,
+          strategy_preferences: competition.strategyPreferences,
+          strategy_output: competition.strategyOutput,
+          race_date: competition.raceDate || null,
+        })
+        .eq('id', savedId);
+      if (error) console.error('Update race error:', error);
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('competitions')
+        .insert({
+          user_id: null,
+          athlete_id: athleteId,
+          sport: competition.sport,
+          race_name: competition.raceName,
+          race_data: competition.raceData,
+          athlete_data: competition.athleteData,
+          strategy_preferences: competition.strategyPreferences,
+          strategy_output: competition.strategyOutput,
+          race_date: competition.raceDate || null,
+        })
+        .select('id')
+        .maybeSingle();
+      if (error) console.error('Save race error:', error);
+      if (data?.id) {
+        setSavedId(data.id);
+        if (raceTags.length > 0) {
+          await setTagsForCompetition(data.id, raceTags.map((t) => t.id));
+        }
+        if (profile?.email && profile?.id) {
+          syncAthleteTagsToHub(profile.email, profile.id);
+        }
       }
     }
   };
 
   const handleNewRace = () => {
+    if (onBackToSaved) {
+      onBackToSaved();
+      return;
+    }
     setStep('sport');
     setSelectedSport(null);
     setCompetition(null);

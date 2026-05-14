@@ -7,6 +7,7 @@ import MobileHeader from './components/layout/MobileHeader';
 import type { AppView } from './components/layout/Sidebar';
 import RacePlannerView from './components/race-planner/RacePlanner';
 import SavedRacesView from './components/race-planner/SavedRaces';
+import type { Competition } from './types/race';
 import AthletesView from './components/views/AthletesView';
 import ReportingView from './components/views/ReportingView';
 import SettingsView from './components/views/SettingsView';
@@ -70,6 +71,7 @@ function AppShell() {
   const VIEW_TITLES = language === 'es' ? VIEW_TITLES_ES : VIEW_TITLES_EN;
   const [activeView, setActiveView] = useState<AppView>('nutrition-dashboard');
   const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [editingCompetition, setEditingCompetition] = useState<Competition | null>(null);
 
   if (loading) {
     return (
@@ -123,14 +125,26 @@ function AppShell() {
   return (
     <div className="flex min-h-screen" style={{ backgroundColor: isDark ? '#150f23' : '#f9fafb' }}>
       <div className="hidden lg:flex">
-        <Sidebar activeView={view} onNavigate={setActiveView} />
+        <Sidebar activeView={view} onNavigate={(v) => { if (v === 'planner') setEditingCompetition(null); setActiveView(v); }} />
       </div>
 
       <MobileHeader title={VIEW_TITLES[view]} />
 
       <main className="flex-1 min-w-0 pt-20 pb-24 lg:pt-0 lg:pb-0">
-        {view === 'planner' && <RacePlannerView />}
-        {view === 'saved' && <SavedRacesView onBack={() => setActiveView('planner')} />}
+        {view === 'planner' && (
+          <RacePlannerView
+            key={editingCompetition?.id ?? 'new'}
+            initialCompetition={editingCompetition ?? undefined}
+            onBackToSaved={editingCompetition ? () => { setEditingCompetition(null); setActiveView('saved'); } : undefined}
+          />
+        )}
+
+        {view === 'saved' && (
+          <SavedRacesView
+            onBack={() => setActiveView('planner')}
+            onEdit={(comp) => { setEditingCompetition(comp); setActiveView('planner'); }}
+          />
+        )}
         {isNutritionView && (
           <NutritionModule
             initialTab={nutritionTab}
@@ -152,7 +166,7 @@ function AppShell() {
       </main>
 
       <div className="lg:hidden">
-        <MobileNav activeView={view} onNavigate={setActiveView} />
+        <MobileNav activeView={view} onNavigate={(v) => { if (v === 'planner') setEditingCompetition(null); setActiveView(v); }} />
       </div>
     </div>
   );

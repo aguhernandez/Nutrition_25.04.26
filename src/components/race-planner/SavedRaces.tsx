@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame, Pencil, Trash2, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
-import type { Sport } from '../../types/race';
+import type { Sport, Competition } from '../../types/race';
 import { getSportConfig } from '../../config/sports';
 import { getTagsForCompetition } from '../../lib/tagService';
 import type { Tag } from '../../lib/tagService';
@@ -12,34 +12,29 @@ interface SavedCompetition {
   sport: Sport;
   race_name: string;
   race_date: string | null;
-  race_data: {
-    distance: number;
-    distanceUnit: string;
-    expectedDurationMin: number;
-    temperature: number;
-    raceDate?: string;
-  };
+  race_data: Record<string, unknown>;
+  athlete_data: Record<string, unknown>;
+  strategy_preferences: Record<string, unknown>;
   strategy_output: {
     carbs?: { recommendedIntakeGH: number };
     hydration?: { fluidIntakeLH: number };
     pacing?: { intensityPercent: number };
     risks?: { level: string }[];
+    [key: string]: unknown;
   };
   created_at: string;
 }
 
 interface Props {
   onBack: () => void;
+  onEdit: (competition: Competition) => void;
 }
 
-export default function SavedRaces({ onBack }: Props) {
+export default function SavedRaces({ onBack, onEdit }: Props) {
   const { user, profile } = useAuth();
   const [races, setRaces] = useState<SavedCompetition[]>([]);
   const [loading, setLoading] = useState(true);
   const [tagsByRaceId, setTagsByRaceId] = useState<Record<string, Tag[]>>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [savingId, setSavingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -48,7 +43,7 @@ export default function SavedRaces({ onBack }: Props) {
     if (!athleteId) { setLoading(false); return; }
     const { data, error } = await supabase
       .from('competitions')
-      .select('id, sport, race_name, race_date, race_data, strategy_output, created_at')
+      .select('id, sport, race_name, race_date, race_data, athlete_data, strategy_preferences, strategy_output, created_at')
       .eq('athlete_id', athleteId)
       .order('created_at', { ascending: false });
     if (error) console.error('Load races error:', error);
@@ -70,38 +65,21 @@ export default function SavedRaces({ onBack }: Props) {
     return h > 0 ? `${h}h ${m}min` : `${m}min`;
   };
 
-  const startEdit = (race: SavedCompetition) => {
-    setEditingId(race.id);
-    setEditingName(race.race_name);
-    setDeleteConfirmId(null);
+  const handleEdit = (race: SavedCompetition) => {
+    const competition: Competition = {
+      id: race.id,
+      sport: race.sport,
+      raceName: race.race_name,
+      raceDate: race.race_date ?? (race.race_data.raceDate as string | undefined),
+      raceData: race.race_data as Competition['raceData'],
+      athleteData: race.athlete_data as Competition['athleteData'],
+      strategyPreferences: race.strategy_preferences as Competition['strategyPreferences'],
+      strategyOutput: race.strategy_output as Competition['strategyOutput'],
+    };
+    onEdit(competition);
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingName('');
-  };
-
-  const saveEdit = async (id: string) => {
-    const name = editingName.trim();
-    if (!name) return;
-    setSavingId(id);
-    const { error } = await supabase
-      .from('competitions')
-      .update({ race_name: name })
-      .eq('id', id);
-    if (!error) {
-      setRaces((prev) => prev.map((r) => r.id === id ? { ...r, race_name: name } : r));
-    }
-    setSavingId(null);
-    setEditingId(null);
-    setEditingName('');
-  };
-
-  const confirmDelete = (id: string) => {
-    setDeleteConfirmId(id);
-    setEditingId(null);
-  };
-
+  const confirmDelete = (id: string) => setDeleteConfirmId(id);
   const cancelDelete = () => setDeleteConfirmId(null);
 
   const doDelete = async (id: string) => {
@@ -146,9 +124,12 @@ export default function SavedRaces({ onBack }: Props) {
             const cfg = getSportConfig(race.sport);
             const hasCritical = (race.strategy_output?.risks ?? []).some((r) => r.level === 'critical');
             const hasRisks = (race.strategy_output?.risks ?? []).length > 0;
-            const isEditing = editingId === race.id;
             const isDeleting = deletingId === race.id;
             const isConfirmingDelete = deleteConfirmId === race.id;
+            const distance = race.race_data.distance as number;
+            const distanceUnit = race.race_data.distanceUnit as string;
+            const durationMin = race.race_data.expectedDurationMin as number;
+            const temperature = race.race_data.temperature as number;
 
             return (
               <div
@@ -176,42 +157,12 @@ export default function SavedRaces({ onBack }: Props) {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      {isEditing ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            className="font-body font-bold text-[#1f2937] border border-[#fdda36] rounded-lg px-2 py-0.5 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-[#fdda36]"
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveEdit(race.id);
-                              if (e.key === 'Escape') cancelEdit();
-                            }}
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => saveEdit(race.id)}
-                            disabled={savingId === race.id}
-                            className="p-1 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                            title="Save"
-                          >
-                            {savingId === race.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="p-1 rounded-lg text-[#9ca3af] hover:bg-[#f3f4f6] transition-colors"
-                            title="Cancel"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <h3 className="font-body font-bold text-[#1f2937] truncate">{race.race_name}</h3>
-                      )}
+                      <h3 className="font-body font-bold text-[#1f2937] truncate">{race.race_name}</h3>
                       <span className="font-body text-xs text-[#9ca3af]">{cfg.label}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 ml-3 flex-shrink-0">
                     {hasCritical ? (
                       <span className="badge badge-red">Critical Flag</span>
                     ) : hasRisks ? (
@@ -220,14 +171,18 @@ export default function SavedRaces({ onBack }: Props) {
                       <span className="badge badge-green">No Flags</span>
                     )}
 
-                    {!isEditing && !isConfirmingDelete && (
+                    {!isConfirmingDelete && (
                       <>
                         <button
-                          onClick={() => startEdit(race)}
-                          className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#514163] hover:bg-[#f9fafb] transition-colors"
-                          title="Rename"
+                          onClick={() => handleEdit(race)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-body text-xs font-medium transition-colors"
+                          style={{ backgroundColor: 'rgba(253,218,54,0.15)', color: '#514163', border: '1px solid rgba(253,218,54,0.4)' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(253,218,54,0.3)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(253,218,54,0.15)'; }}
+                          title="Open race plan"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <ExternalLink className="w-3 h-3" />
+                          Edit Plan
                         </button>
                         <button
                           onClick={() => confirmDelete(race.id)}
@@ -265,8 +220,8 @@ export default function SavedRaces({ onBack }: Props) {
                 {/* Stats grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
-                    { icon: MapPin, label: 'Distance', value: `${race.race_data.distance} ${race.race_data.distanceUnit}`, color: '#1f2937' },
-                    { icon: Clock, label: 'Duration', value: formatDuration(race.race_data.expectedDurationMin), color: '#1f2937' },
+                    { icon: MapPin, label: 'Distance', value: `${distance} ${distanceUnit}`, color: '#1f2937' },
+                    { icon: Clock, label: 'Duration', value: formatDuration(durationMin), color: '#1f2937' },
                     { icon: Flame, label: 'Carbs', value: `${race.strategy_output?.carbs?.recommendedIntakeGH ?? '–'} g/h`, color: '#b45309' },
                     { icon: Droplets, label: 'Fluid', value: `${race.strategy_output?.hydration?.fluidIntakeLH ?? '–'} L/h`, color: '#2563eb' },
                   ].map(({ icon: Icon, label, value, color }) => (
@@ -297,7 +252,7 @@ export default function SavedRaces({ onBack }: Props) {
                   <div className="flex items-center gap-1 font-body text-xs text-[#9ca3af]">
                     <Calendar className="w-3 h-3" />
                     {(() => {
-                      const d = race.race_date || race.race_data.raceDate;
+                      const d = race.race_date || (race.race_data.raceDate as string | undefined);
                       if (!d) return '—';
                       return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {
                         month: 'short', day: 'numeric', year: 'numeric',
@@ -305,7 +260,7 @@ export default function SavedRaces({ onBack }: Props) {
                     })()}
                   </div>
                   <div className="font-body text-xs text-[#9ca3af]">
-                    {race.race_data.temperature}°C &middot; {race.strategy_output?.pacing?.intensityPercent ?? '–'}% VO2
+                    {temperature}°C &middot; {race.strategy_output?.pacing?.intensityPercent ?? '–'}% VO2
                   </div>
                 </div>
               </div>
