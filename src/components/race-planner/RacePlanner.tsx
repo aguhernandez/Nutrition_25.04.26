@@ -77,7 +77,7 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
           athlete_data: competition.athleteData,
           strategy_preferences: competition.strategyPreferences,
           strategy_output: competition.strategyOutput,
-          race_date: competition.raceDate || null,
+          race_date: (competition.raceData.raceDate || competition.raceDate || '').trim() || null,
         })
         .eq('id', savedId);
       if (error) console.error('Update race error:', error);
@@ -94,7 +94,7 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
           athlete_data: competition.athleteData,
           strategy_preferences: competition.strategyPreferences,
           strategy_output: competition.strategyOutput,
-          race_date: competition.raceDate || null,
+          race_date: (competition.raceData.raceDate || competition.raceDate || '').trim() || null,
         })
         .select('id')
         .maybeSingle();
