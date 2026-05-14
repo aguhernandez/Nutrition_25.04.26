@@ -228,7 +228,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
       await pushRacePlan(athleteEmail, {
         race_name: competition.raceName,
         sport: competition.sport,
-        race_date: competition.raceDate || null,
+        race_date: competition.raceDate || competition.raceData.raceDate || null,
         distance_km: Math.round(distKm * 10) / 10,
         expected_duration_min: competition.raceData.expectedDurationMin,
         temperature_c: competition.raceData.temperature,
