@@ -162,7 +162,7 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
 type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
 export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace }: Props) {
-  const { theme } = usePreferences();
+  const { theme, language } = usePreferences();
   const { user, profile } = useAuth();
   const isDark = theme === 'dark';
 
