@@ -15,7 +15,8 @@ import {
   Brain,
   FileText,
   ClipboardList,
-  Radio,
+  Send,
+  AlertCircle,
 } from 'lucide-react';
 import type { Competition, StrategyOutput, RaceCatalogEntry, HydrationStation } from '../../../types/race';
 import RaceCourseView from '../course/RaceCourseView';
@@ -26,9 +27,10 @@ import { printFullReport, printCueCard, buildSegments } from '../../../utils/gen
 import EditableSegmentTable from './EditableSegmentTable';
 import EditableRecommendationsPanel from './EditableRecommendations';
 import NutritionPlanCustomizer from '../nutrition/NutritionPlanCustomizer';
-import LiveRaceMode from '../live/LiveRaceMode';
 import { generateHydrationStations, generateElevationProfile } from '../../../utils/elevationGenerator';
 import { usePreferences } from '../../../lib/preferences';
+import { useAuth } from '../../../lib/auth';
+import { pushRacePlan } from '../../../lib/hubApi';
 
 interface Props {
   competition: Competition;
@@ -157,16 +159,20 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
   );
 }
 
+type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
+
 export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace }: Props) {
   const { theme } = usePreferences();
+  const { user, profile } = useAuth();
   const isDark = theme === 'dark';
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [editablePlan, setEditablePlan] = useState<EditablePlan | null>(null);
   const [nutritionPlan, setNutritionPlan] = useState<RaceNutritionPlan | undefined>(undefined);
-  const [showLiveMode, setShowLiveMode] = useState(false);
   const [hydrationStations, setHydrationStations] = useState<HydrationStation[]>([]);
+  const [hubPushStatus, setHubPushStatus] = useState<HubPushStatus>('idle');
+  const [hubPushError, setHubPushError] = useState<string | null>(null);
 
   const output = competition.strategyOutput as StrategyOutput;
   const cfg = getSportConfig(competition.sport);
@@ -203,6 +209,120 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
   const handleFullReport = () => printFullReport(competition, editablePlan ?? undefined);
   const handleCueCard = () => printCueCard(competition, editablePlan ?? undefined);
 
+  const handleSendToHub = async () => {
+    const athleteEmail = profile?.email || user?.email;
+    if (!athleteEmail) {
+      setHubPushError('No athlete email found. Make sure you are logged in.');
+      setHubPushStatus('error');
+      return;
+    }
+    setHubPushStatus('pushing');
+    setHubPushError(null);
+    try {
+      const output = competition.strategyOutput as StrategyOutput;
+      const distKm = competition.raceData.distanceUnit === 'miles'
+        ? competition.raceData.distance * 1.60934
+        : competition.raceData.distance;
+      const segments = buildSegments(competition, output);
+
+      await pushRacePlan(athleteEmail, {
+        race_name: competition.raceName,
+        sport: competition.sport,
+        race_date: competition.raceDate || null,
+        distance_km: Math.round(distKm * 10) / 10,
+        expected_duration_min: competition.raceData.expectedDurationMin,
+        temperature_c: competition.raceData.temperature,
+        humidity_pct: competition.raceData.humidity,
+        altitude_m: competition.raceData.altitude,
+
+        intensity_percent: output.pacing.intensityPercent,
+        intensity_zone: output.pacing.intensityZone,
+        target_pace_min_km: output.pacing.estimatedPaceMinKm,
+        pacing_recommendation: output.pacing.recommendation,
+
+        carbs_g_per_hour: output.carbs.recommendedIntakeGH,
+        total_carbs_g: output.carbs.totalCarbsG,
+        carb_sources: output.carbs.sources,
+        carb_timing: output.carbs.timing,
+
+        fluid_l_per_hour: output.hydration.fluidIntakeLH,
+        total_fluid_l: output.hydration.totalFluidL,
+        sodium_mg_per_hour: output.hydration.sodiumMgH,
+        total_sodium_mg: output.hydration.totalSodiumMg,
+        sweat_rate_l_per_hour: output.hydration.sweatRateLH,
+        projected_mass_loss_pct: output.hydration.projectedMassLossPct,
+
+        caffeine_total_mg: output.caffeine.totalMg,
+        caffeine_mg_per_kg: output.caffeine.mgPerKg,
+        caffeine_pre_dose_mg: output.caffeine.preDoseMg,
+        caffeine_pre_dose_min_before: output.caffeine.preDoseMinBeforeStart,
+        caffeine_mid_race_doses: output.caffeine.midRaceDoses.map((d) => ({
+          label: d.label,
+          timing_min: d.timingMin,
+          mg: d.mg,
+        })),
+        caffeine_sources: output.caffeine.sources,
+        caffeine_notes: output.caffeine.notes,
+
+        segments: segments.map((s) => ({
+          time_min: s.timeMin,
+          distance_km: s.distanceKm,
+          cho_g: s.choG,
+          fluid_ml: s.fluidMl,
+          sodium_mg: s.sodiumMg,
+          caffeine_note: s.caffeineNote,
+        })),
+
+        pre_comp_notes: output.preComp.notes,
+        cho_loading_days: output.preComp.choLoadingDays,
+        pre_comp_days: output.preComp.plan.map((d) => ({
+          day_label: d.dayLabel,
+          carbs_gkg: d.carbsGkg,
+          total_carbs_g: d.totalCarbsG,
+          protein_g: d.proteinG,
+          total_kcal: d.totalKcal,
+          meals: d.meals.map((m) => ({
+            timing: m.timing,
+            description: m.description,
+            carbs_g: m.carbsG,
+          })),
+          notes: d.notes,
+        })),
+        race_breakfast_timing: output.preComp.raceBreakfast.timingBeforeStart,
+        race_breakfast_description: output.preComp.raceBreakfast.description,
+        race_breakfast_carbs_g: output.preComp.raceBreakfast.carbsG,
+
+        gi_training_weeks: output.giTraining?.weeks ?? null,
+        gi_training_target_g_per_hour: output.giTraining?.targetGH ?? null,
+        gi_training_notes: output.giTraining?.notes ?? null,
+        gi_sessions: output.giTraining?.sessions.map((s) => ({
+          week: s.week,
+          intake_g_per_hour: s.intakeGH,
+          duration: s.duration,
+          format: s.format,
+          notes: s.notes,
+        })) ?? null,
+
+        risks: output.risks,
+        athlete_notes: editablePlan?.recommendations
+          ? {
+              pacing: editablePlan.recommendations.pacingNote || undefined,
+              carbs: editablePlan.recommendations.carbsNote || undefined,
+              hydration: editablePlan.recommendations.hydrationNote || undefined,
+              caffeine: editablePlan.recommendations.caffeineNote || undefined,
+              general: editablePlan.recommendations.generalNotes || undefined,
+            }
+          : {},
+        generated_at: output.generatedAt,
+        plan_version: '2.0',
+      });
+      setHubPushStatus('success');
+    } catch (err) {
+      setHubPushError(err instanceof Error ? err.message : 'Error sending to Hub');
+      setHubPushStatus('error');
+    }
+  };
+
   const btnSecondary = isDark
     ? 'bg-white/8 hover:bg-white/12 text-gray-200 border border-white/10'
     : 'bg-gray-100 hover:bg-gray-200 text-gray-700';
@@ -225,12 +345,32 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setShowLiveMode(true)}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-blue-500/20 hover:opacity-90"
-          >
-            <Radio className="w-4 h-4 animate-pulse" /> Start Race
-          </button>
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={handleSendToHub}
+              disabled={hubPushStatus === 'pushing' || hubPushStatus === 'success'}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg ${
+                hubPushStatus === 'success'
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-none'
+                  : hubPushStatus === 'error'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-none hover:bg-red-500/30'
+                  : 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-blue-500/20 hover:opacity-90'
+              }`}
+            >
+              {hubPushStatus === 'pushing' ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+              ) : hubPushStatus === 'success' ? (
+                <><CheckCircle className="w-4 h-4" /> Sent to Hub!</>
+              ) : hubPushStatus === 'error' ? (
+                <><AlertCircle className="w-4 h-4" /> Retry Send</>
+              ) : (
+                <><Send className="w-4 h-4" /> Send to Hub / Enviar al Hub</>
+              )}
+            </button>
+            {hubPushStatus === 'error' && hubPushError && (
+              <p className="text-xs text-red-400 px-1">{hubPushError}</p>
+            )}
+          </div>
           <button
             onClick={handleFullReport}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${btnSecondary}`}
@@ -551,14 +691,6 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
         </Section>
       </div>
 
-      {showLiveMode && (
-        <LiveRaceMode
-          competition={competition}
-          nutritionPlan={nutritionPlan}
-          hydrationStations={hydrationStations}
-          onClose={() => setShowLiveMode(false)}
-        />
-      )}
     </div>
   );
 }

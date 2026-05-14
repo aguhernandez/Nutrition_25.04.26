@@ -10,9 +10,6 @@ import type {
 import { calculateRaceStrategy } from '../../engine/raceCalculationEngine';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
-import { pushRacePlan } from '../../lib/hubApi';
-import { buildSegments } from '../../utils/generatePrintPlan';
-import type { StrategyOutput } from '../../types/race';
 import SportSelector from './SportSelector';
 import Questionnaire from './questionnaire/Questionnaire';
 import ResultsDashboard from './results/ResultsDashboard';
@@ -91,111 +88,6 @@ export default function RacePlanner() {
         syncAthleteTagsToHub(profile.email, profile.id);
       }
     }
-
-    // 2. Push to Hub (fire-and-forget, non-blocking)
-    const athleteEmail = profile?.email || user?.email;
-    if (athleteEmail) {
-      buildAndPushRacePlanToHub(athleteEmail, competition).catch((e) =>
-        console.error('Hub race plan push failed:', e)
-      );
-    }
-  };
-
-  const buildAndPushRacePlanToHub = async (
-    athleteEmail: string,
-    comp: typeof competition
-  ) => {
-    if (!comp) return;
-    const output = comp.strategyOutput as StrategyOutput;
-    const distKm = comp.raceData.distanceUnit === 'miles'
-      ? comp.raceData.distance * 1.60934
-      : comp.raceData.distance;
-
-    const segments = buildSegments(comp, output);
-
-    await pushRacePlan(athleteEmail, {
-      race_name: comp.raceName,
-      sport: comp.sport,
-      race_date: comp.raceDate || null,
-      distance_km: Math.round(distKm * 10) / 10,
-      expected_duration_min: comp.raceData.expectedDurationMin,
-      temperature_c: comp.raceData.temperature,
-      humidity_pct: comp.raceData.humidity,
-      altitude_m: comp.raceData.altitude,
-
-      intensity_percent: output.pacing.intensityPercent,
-      intensity_zone: output.pacing.intensityZone,
-      target_pace_min_km: output.pacing.estimatedPaceMinKm,
-      pacing_recommendation: output.pacing.recommendation,
-
-      carbs_g_per_hour: output.carbs.recommendedIntakeGH,
-      total_carbs_g: output.carbs.totalCarbsG,
-      carb_sources: output.carbs.sources,
-      carb_timing: output.carbs.timing,
-
-      fluid_l_per_hour: output.hydration.fluidIntakeLH,
-      total_fluid_l: output.hydration.totalFluidL,
-      sodium_mg_per_hour: output.hydration.sodiumMgH,
-      total_sodium_mg: output.hydration.totalSodiumMg,
-      sweat_rate_l_per_hour: output.hydration.sweatRateLH,
-      projected_mass_loss_pct: output.hydration.projectedMassLossPct,
-
-      caffeine_total_mg: output.caffeine.totalMg,
-      caffeine_mg_per_kg: output.caffeine.mgPerKg,
-      caffeine_pre_dose_mg: output.caffeine.preDoseMg,
-      caffeine_pre_dose_min_before: output.caffeine.preDoseMinBeforeStart,
-      caffeine_mid_race_doses: output.caffeine.midRaceDoses.map((d) => ({
-        label: d.label,
-        timing_min: d.timingMin,
-        mg: d.mg,
-      })),
-      caffeine_sources: output.caffeine.sources,
-      caffeine_notes: output.caffeine.notes,
-
-      segments: segments.map((s) => ({
-        time_min: s.timeMin,
-        distance_km: s.distanceKm,
-        cho_g: s.choG,
-        fluid_ml: s.fluidMl,
-        sodium_mg: s.sodiumMg,
-        caffeine_note: s.caffeineNote,
-      })),
-
-      pre_comp_notes: output.preComp.notes,
-      cho_loading_days: output.preComp.choLoadingDays,
-      pre_comp_days: output.preComp.plan.map((d) => ({
-        day_label: d.dayLabel,
-        carbs_gkg: d.carbsGkg,
-        total_carbs_g: d.totalCarbsG,
-        protein_g: d.proteinG,
-        total_kcal: d.totalKcal,
-        meals: d.meals.map((m) => ({
-          timing: m.timing,
-          description: m.description,
-          carbs_g: m.carbsG,
-        })),
-        notes: d.notes,
-      })),
-      race_breakfast_timing: output.preComp.raceBreakfast.timingBeforeStart,
-      race_breakfast_description: output.preComp.raceBreakfast.description,
-      race_breakfast_carbs_g: output.preComp.raceBreakfast.carbsG,
-
-      gi_training_weeks: output.giTraining?.weeks ?? null,
-      gi_training_target_g_per_hour: output.giTraining?.targetGH ?? null,
-      gi_training_notes: output.giTraining?.notes ?? null,
-      gi_sessions: output.giTraining?.sessions.map((s) => ({
-        week: s.week,
-        intake_g_per_hour: s.intakeGH,
-        duration: s.duration,
-        format: s.format,
-        notes: s.notes,
-      })) ?? null,
-
-      risks: output.risks,
-      athlete_notes: {},
-      generated_at: output.generatedAt,
-      plan_version: '2.0',
-    });
   };
 
   const handleNewRace = () => {
