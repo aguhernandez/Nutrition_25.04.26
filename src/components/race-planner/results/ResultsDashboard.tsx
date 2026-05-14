@@ -364,7 +364,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
               ) : hubPushStatus === 'error' ? (
                 <><AlertCircle className="w-4 h-4" /> Retry Send</>
               ) : (
-                <><Send className="w-4 h-4" /> Send to Hub / Enviar al Hub</>
+                <><Send className="w-4 h-4" /> {language === 'es' ? 'Enviar al Hub' : 'Send to Hub'}</>
               )}
             </button>
             {hubPushStatus === 'error' && hubPushError && (
