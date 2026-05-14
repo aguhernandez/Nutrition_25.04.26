@@ -225,10 +225,17 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
         : competition.raceData.distance;
       const segments = buildSegments(competition, output);
 
+      const raceDateResolved = (competition.raceData.raceDate || competition.raceDate || '').trim() || null;
+      console.log('[Hub Push] race_date debug:', {
+        'competition.raceDate': competition.raceDate,
+        'competition.raceData.raceDate': competition.raceData.raceDate,
+        'resolved race_date': raceDateResolved,
+      });
+
       await pushRacePlan(athleteEmail, {
         race_name: competition.raceName,
         sport: competition.sport,
-        race_date: (competition.raceData.raceDate || competition.raceDate || '').trim() || null,
+        race_date: raceDateResolved,
         distance_km: Math.round(distKm * 10) / 10,
         expected_duration_min: competition.raceData.expectedDurationMin,
         temperature_c: competition.raceData.temperature,
