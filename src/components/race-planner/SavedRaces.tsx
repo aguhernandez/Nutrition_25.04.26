@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame } from 'lucide-react';
+import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame, Pencil, Trash2, Check, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import type { Sport } from '../../types/race';
@@ -37,35 +37,82 @@ export default function SavedRaces({ onBack }: Props) {
   const [races, setRaces] = useState<SavedCompetition[]>([]);
   const [loading, setLoading] = useState(true);
   const [tagsByRaceId, setTagsByRaceId] = useState<Record<string, Tag[]>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const athleteId = profile?.hub_user_id || user?.id || null;
-      if (!athleteId) {
-        setLoading(false);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('competitions')
-        .select('id, sport, race_name, race_date, race_data, strategy_output, created_at')
-        .eq('athlete_id', athleteId)
-        .order('created_at', { ascending: false });
-      if (error) console.error('Load races error:', error);
-      const loaded = (data as SavedCompetition[]) ?? [];
-      setRaces(loaded);
-      setLoading(false);
-      loaded.forEach((race) => {
-        getTagsForCompetition(race.id).then((tags) => {
-          setTagsByRaceId((prev) => ({ ...prev, [race.id]: tags }));
-        });
+  const loadRaces = async () => {
+    const athleteId = profile?.hub_user_id || user?.id || null;
+    if (!athleteId) { setLoading(false); return; }
+    const { data, error } = await supabase
+      .from('competitions')
+      .select('id, sport, race_name, race_date, race_data, strategy_output, created_at')
+      .eq('athlete_id', athleteId)
+      .order('created_at', { ascending: false });
+    if (error) console.error('Load races error:', error);
+    const loaded = (data as SavedCompetition[]) ?? [];
+    setRaces(loaded);
+    setLoading(false);
+    loaded.forEach((race) => {
+      getTagsForCompetition(race.id).then((tags) => {
+        setTagsByRaceId((prev) => ({ ...prev, [race.id]: tags }));
       });
-    })();
-  }, []);
+    });
+  };
+
+  useEffect(() => { loadRaces(); }, []);
 
   const formatDuration = (min: number) => {
     const h = Math.floor(min / 60);
     const m = min % 60;
     return h > 0 ? `${h}h ${m}min` : `${m}min`;
+  };
+
+  const startEdit = (race: SavedCompetition) => {
+    setEditingId(race.id);
+    setEditingName(race.race_name);
+    setDeleteConfirmId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const saveEdit = async (id: string) => {
+    const name = editingName.trim();
+    if (!name) return;
+    setSavingId(id);
+    const { error } = await supabase
+      .from('competitions')
+      .update({ race_name: name })
+      .eq('id', id);
+    if (!error) {
+      setRaces((prev) => prev.map((r) => r.id === id ? { ...r, race_name: name } : r));
+    }
+    setSavingId(null);
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const confirmDelete = (id: string) => {
+    setDeleteConfirmId(id);
+    setEditingId(null);
+  };
+
+  const cancelDelete = () => setDeleteConfirmId(null);
+
+  const doDelete = async (id: string) => {
+    setDeletingId(id);
+    const { error } = await supabase.from('competitions').delete().eq('id', id);
+    if (!error) {
+      setRaces((prev) => prev.filter((r) => r.id !== id));
+      setTagsByRaceId((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    }
+    setDeletingId(null);
+    setDeleteConfirmId(null);
   };
 
   return (
@@ -91,9 +138,7 @@ export default function SavedRaces({ onBack }: Props) {
           <p className="font-body text-sm text-[#9ca3af] mb-6 max-w-xs">
             Plan your first race and save the strategy to see it here.
           </p>
-          <button onClick={onBack} className="btn-primary">
-            Plan a Race
-          </button>
+          <button onClick={onBack} className="btn-primary">Plan a Race</button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -101,6 +146,9 @@ export default function SavedRaces({ onBack }: Props) {
             const cfg = getSportConfig(race.sport);
             const hasCritical = (race.strategy_output?.risks ?? []).some((r) => r.level === 'critical');
             const hasRisks = (race.strategy_output?.risks ?? []).length > 0;
+            const isEditing = editingId === race.id;
+            const isDeleting = deletingId === race.id;
+            const isConfirmingDelete = deleteConfirmId === race.id;
 
             return (
               <div
@@ -116,8 +164,9 @@ export default function SavedRaces({ onBack }: Props) {
                   (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(81,65,99,0.05)';
                 }}
               >
+                {/* Header row */}
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
                       style={{ backgroundColor: 'rgba(253,218,54,0.18)' }}
@@ -126,20 +175,94 @@ export default function SavedRaces({ onBack }: Props) {
                         {cfg.label.slice(0, 2).toUpperCase()}
                       </span>
                     </div>
-                    <div>
-                      <h3 className="font-body font-bold text-[#1f2937]">{race.race_name}</h3>
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="font-body font-bold text-[#1f2937] border border-[#fdda36] rounded-lg px-2 py-0.5 text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-[#fdda36]"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit(race.id);
+                              if (e.key === 'Escape') cancelEdit();
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveEdit(race.id)}
+                            disabled={savingId === race.id}
+                            className="p-1 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
+                            title="Save"
+                          >
+                            {savingId === race.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="p-1 rounded-lg text-[#9ca3af] hover:bg-[#f3f4f6] transition-colors"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <h3 className="font-body font-bold text-[#1f2937] truncate">{race.race_name}</h3>
+                      )}
                       <span className="font-body text-xs text-[#9ca3af]">{cfg.label}</span>
                     </div>
                   </div>
-                  {hasCritical ? (
-                    <span className="badge badge-red">Critical Flag</span>
-                  ) : hasRisks ? (
-                    <span className="badge badge-yellow">Warning</span>
-                  ) : (
-                    <span className="badge badge-green">No Flags</span>
-                  )}
+
+                  <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                    {hasCritical ? (
+                      <span className="badge badge-red">Critical Flag</span>
+                    ) : hasRisks ? (
+                      <span className="badge badge-yellow">Warning</span>
+                    ) : (
+                      <span className="badge badge-green">No Flags</span>
+                    )}
+
+                    {!isEditing && !isConfirmingDelete && (
+                      <>
+                        <button
+                          onClick={() => startEdit(race)}
+                          className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#514163] hover:bg-[#f9fafb] transition-colors"
+                          title="Rename"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => confirmDelete(race.id)}
+                          className="p-1.5 rounded-lg text-[#9ca3af] hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
+                {/* Delete confirmation */}
+                {isConfirmingDelete && (
+                  <div className="mb-4 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
+                    <span className="font-body text-xs text-red-600 flex-1">Delete this race plan? This cannot be undone.</span>
+                    <button
+                      onClick={() => doDelete(race.id)}
+                      disabled={isDeleting}
+                      className="flex items-center gap-1 px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+                    >
+                      {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      Delete
+                    </button>
+                    <button
+                      onClick={cancelDelete}
+                      className="px-3 py-1 rounded-lg bg-white border border-[#e5e7eb] text-xs text-[#6b7280] hover:bg-[#f9fafb] transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {/* Stats grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { icon: MapPin, label: 'Distance', value: `${race.race_data.distance} ${race.race_data.distanceUnit}`, color: '#1f2937' },
@@ -151,9 +274,7 @@ export default function SavedRaces({ onBack }: Props) {
                       <div className="font-body text-xs text-[#9ca3af] mb-0.5 flex items-center gap-1">
                         <Icon className="w-3 h-3" /> {label}
                       </div>
-                      <div className="font-body font-semibold text-sm" style={{ color }}>
-                        {value}
-                      </div>
+                      <div className="font-body font-semibold text-sm" style={{ color }}>{value}</div>
                     </div>
                   ))}
                 </div>
