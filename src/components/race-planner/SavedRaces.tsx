@@ -11,6 +11,7 @@ interface SavedCompetition {
   id: string;
   sport: Sport;
   race_name: string;
+  race_date: string | null;
   race_data: {
     distance: number;
     distanceUnit: string;
@@ -46,7 +47,7 @@ export default function SavedRaces({ onBack }: Props) {
       }
       const { data, error } = await supabase
         .from('competitions')
-        .select('id, sport, race_name, race_data, strategy_output, created_at')
+        .select('id, sport, race_name, race_date, race_data, strategy_output, created_at')
         .eq('athlete_id', athleteId)
         .order('created_at', { ascending: false });
       if (error) console.error('Load races error:', error);
@@ -174,9 +175,13 @@ export default function SavedRaces({ onBack }: Props) {
                 <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#f3f4f6]">
                   <div className="flex items-center gap-1 font-body text-xs text-[#9ca3af]">
                     <Calendar className="w-3 h-3" />
-                    {new Date(race.created_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric', year: 'numeric',
-                    })}
+                    {(() => {
+                      const d = race.race_date || race.race_data.raceDate;
+                      if (!d) return '—';
+                      return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      });
+                    })()}
                   </div>
                   <div className="font-body text-xs text-[#9ca3af]">
                     {race.race_data.temperature}°C &middot; {race.strategy_output?.pacing?.intensityPercent ?? '–'}% VO2
