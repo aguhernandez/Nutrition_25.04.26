@@ -49,6 +49,12 @@ Deno.serve(async (req: Request) => {
     let body: string | undefined;
     if (isPush) {
       body = await req.text();
+      if (endpoint === "push-race-plan") {
+        try {
+          const parsed = JSON.parse(body);
+          console.log(`[hub-data-proxy] push-race-plan race_date received: ${JSON.stringify(parsed.race_date)}`);
+        } catch { /* ignore */ }
+      }
     }
 
     const hubResponse = await fetch(hubUrl, {
