@@ -109,7 +109,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
 
   return (
     <div
-      className="rounded-2xl overflow-hidden print:hidden transition-colors"
+      className="rounded-2xl print:hidden transition-colors"
       style={{ backgroundColor: cardBg, border: cardBorder, boxShadow: cardShadow }}
     >
       <button
@@ -137,7 +137,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
       </button>
 
       {!collapsed && (
-        <div className="px-6 pb-6 space-y-5">
+        <div className="px-6 pb-80 space-y-5">
           {/* Targets summary */}
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)' }}>
