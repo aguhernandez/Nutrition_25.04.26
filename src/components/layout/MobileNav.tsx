@@ -43,6 +43,7 @@ const NUTRITION_VIEWS: AppView[] = [
   'nutrition-planner',
   'nutrition-menu-templates',
   'nutrition-supplements',
+  'nutrition-food-database',
 ];
 
 export default function MobileNav({ activeView, onNavigate }: Props) {

@@ -30,6 +30,7 @@ const VIEW_TITLES_ES: Record<AppView, string> = {
   'nutrition-planner': 'Editor de Comidas',
   'nutrition-menu-templates': 'Plantillas de Menú',
   'nutrition-supplements': 'Suplementos',
+  'nutrition-food-database': 'Food Database',
 };
 
 const VIEW_TITLES_EN: Record<AppView, string> = {
@@ -44,6 +45,7 @@ const VIEW_TITLES_EN: Record<AppView, string> = {
   'nutrition-planner': 'Meal Editor',
   'nutrition-menu-templates': 'Menu Templates',
   'nutrition-supplements': 'Supplements',
+  'nutrition-food-database': 'Food Database',
 };
 
 const VIEW_TO_TAB: Partial<Record<AppView, NutritionTab>> = {
@@ -53,6 +55,7 @@ const VIEW_TO_TAB: Partial<Record<AppView, NutritionTab>> = {
   'nutrition-planner': 'planner',
   'nutrition-menu-templates': 'menu-templates',
   'nutrition-supplements': 'supplements',
+  'nutrition-food-database': 'admin-foods',
 };
 
 const NUTRITION_VIEWS: AppView[] = [
@@ -62,6 +65,7 @@ const NUTRITION_VIEWS: AppView[] = [
   'nutrition-planner',
   'nutrition-menu-templates',
   'nutrition-supplements',
+  'nutrition-food-database',
 ];
 
 function AppShell() {
@@ -155,6 +159,7 @@ function AppShell() {
                 planner: 'nutrition-planner',
                 'menu-templates': 'nutrition-menu-templates',
                 supplements: 'nutrition-supplements',
+                'admin-foods': 'nutrition-food-database',
               };
               if (viewMap[tab]) setActiveView(viewMap[tab]!);
             }}

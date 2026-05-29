@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Plus,
   Zap,
+  Database,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -31,7 +32,8 @@ export type AppView =
   | 'nutrition-recipes'
   | 'nutrition-planner'
   | 'nutrition-menu-templates'
-  | 'nutrition-supplements';
+  | 'nutrition-supplements'
+  | 'nutrition-food-database';
 
 interface NavItem {
   view: AppView;
@@ -59,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
       { view: 'nutrition-planner', label_es: 'Editor de Comidas', label_en: 'Meal Editor', icon: Plus, roles: ['admin', 'coach', 'athlete'] },
       { view: 'nutrition-menu-templates', label_es: 'Plantillas de Menú', label_en: 'Menu Templates', icon: LayoutGrid, roles: ['admin', 'coach', 'athlete'] },
       { view: 'nutrition-supplements', label_es: 'Suplementos', label_en: 'Supplements', icon: Zap, roles: ['admin', 'coach', 'athlete'] },
+      { view: 'nutrition-food-database', label_es: 'Food Database', label_en: 'Food Database', icon: Database, roles: ['admin'] },
     ],
   },
   { view: 'athletes', label_es: 'Atletas', label_en: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
@@ -73,6 +76,7 @@ const NUTRITION_VIEWS: AppView[] = [
   'nutrition-planner',
   'nutrition-menu-templates',
   'nutrition-supplements',
+  'nutrition-food-database',
 ];
 
 interface Props {
