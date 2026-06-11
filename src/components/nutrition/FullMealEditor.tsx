@@ -587,8 +587,17 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
   };
 
   const loadFoods = async () => {
-    const { data } = await supabase.from('foods_v2').select('*').order('name_es').limit(500);
-    setFoods((data || []) as FoodV2[]);
+    const all: FoodV2[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data } = await supabase.from('foods_v2').select('*').order('name_es').range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      all.push(...(data as FoodV2[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    setFoods(all);
   };
 
   const loadRecipes = async () => {

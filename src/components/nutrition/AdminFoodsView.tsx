@@ -175,12 +175,22 @@ export default function AdminFoodsView({ onBack }: Props) {
 
   const loadFoods = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('foods_v2')
-      .select('*')
-      .eq('is_supplement', false)
-      .order('name_en');
-    setFoods((data ?? []) as FoodV2[]);
+    const all: FoodV2[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data } = await supabase
+        .from('foods_v2')
+        .select('*')
+        .eq('is_supplement', false)
+        .order('name_en')
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      all.push(...(data as FoodV2[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    setFoods(all);
     setLoading(false);
   };
 
@@ -218,6 +228,7 @@ export default function AdminFoodsView({ onBack }: Props) {
     if (!importDraft) return;
     const { result, name_es, name_en } = importDraft;
     setUsdaImporting(result.fdcId);
+    setUsdaError('');
     try {
       const json = await callUSDAProxy(`/food/${result.fdcId}`);
       const f = json.food;
@@ -273,12 +284,14 @@ export default function AdminFoodsView({ onBack }: Props) {
       };
 
       const { data, error } = await supabase.from('foods_v2').insert(record).select().maybeSingle();
-      if (!error && data) {
-        setFoods((prev) => [data as FoodV2, ...prev]);
+      if (error) {
+        setUsdaError(`Import failed: ${error.message}`);
+      } else if (data) {
+        setFoods((prev) => [...prev, data as FoodV2].sort((a, b) => a.name_en.localeCompare(b.name_en)));
         setUsdaImported((prev) => new Set([...prev, result.fdcId]));
       }
-    } catch {
-      // silent
+    } catch (err: any) {
+      setUsdaError(`Import error: ${err?.message ?? 'Unknown error'}`);
     }
     setUsdaImporting(null);
     setImportDraft(null);
