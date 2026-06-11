@@ -9,30 +9,85 @@ const corsHeaders = {
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
 
 const NUTRIENT_IDS: Record<string, string> = {
+  // Macros — both old (200-series) and new (1000-series) nutrient numbers
+  "208": "calories_kcal",
   "1008": "calories_kcal",
+  "203": "protein_g",
   "1003": "protein_g",
+  "205": "carbs_g",
   "1005": "carbs_g",
+  "204": "fat_g",
   "1004": "fat_g",
+  "291": "fiber_g",
   "1079": "fiber_g",
+  "269": "sugar_g",
   "2000": "sugar_g",
+  // Minerals
+  "307": "sodium_mg",
   "1093": "sodium_mg",
+  "306": "potassium_mg",
   "1092": "potassium_mg",
+  "301": "calcium_mg",
   "1087": "calcium_mg",
+  "303": "iron_mg",
   "1089": "iron_mg",
+  "304": "magnesium_mg",
   "1090": "magnesium_mg",
+  "305": "phosphorus_mg",
   "1091": "phosphorus_mg",
+  "309": "zinc_mg",
   "1095": "zinc_mg",
+  "312": "copper_mg",
+  "1098": "copper_mg",
+  "315": "manganese_mg",
+  "1101": "manganese_mg",
+  "317": "selenium_ug",
+  "1103": "selenium_ug",
+  "311": "iodine_ug",
+  "1100": "iodine_ug",
+  // Vitamins
+  "320": "vitamin_a_ug",
   "1106": "vitamin_a_ug",
+  "404": "vitamin_b1_mg",
   "1165": "vitamin_b1_mg",
+  "405": "vitamin_b2_mg",
   "1166": "vitamin_b2_mg",
+  "406": "vitamin_b3_mg",
   "1167": "vitamin_b3_mg",
+  "410": "vitamin_b5_mg",
+  "1170": "vitamin_b5_mg",
+  "415": "vitamin_b6_mg",
   "1175": "vitamin_b6_mg",
-  "1178": "vitamin_b12_ug",
-  "1162": "vitamin_c_mg",
-  "1114": "vitamin_d_ug",
-  "1109": "vitamin_e_mg",
-  "1185": "vitamin_k_ug",
+  "416": "vitamin_b7_ug",
+  "1176": "vitamin_b7_ug",
+  "417": "folate_ug",
   "1177": "folate_ug",
+  "418": "vitamin_b12_ug",
+  "1178": "vitamin_b12_ug",
+  "401": "vitamin_c_mg",
+  "1162": "vitamin_c_mg",
+  "328": "vitamin_d_ug",
+  "1114": "vitamin_d_ug",
+  "323": "vitamin_e_mg",
+  "1109": "vitamin_e_mg",
+  "430": "vitamin_k_ug",
+  "1185": "vitamin_k_ug",
+  // Other compounds
+  "421": "choline_mg",
+  "1180": "choline_mg",
+  "321": "beta_carotene_ug",
+  "1107": "beta_carotene_ug",
+  // Lipids detail
+  "601": "cholesterol_mg",
+  "1253": "cholesterol_mg",
+  "606": "saturated_fat_g",
+  "1258": "saturated_fat_g",
+  "605": "trans_fat_g",
+  "1257": "trans_fat_g",
+  "645": "monounsaturated_fat_g",
+  "1292": "monounsaturated_fat_g",
+  "646": "polyunsaturated_fat_g",
+  "1293": "polyunsaturated_fat_g",
 };
 
 const SPANISH_TRANSLATIONS: Record<string, string> = {
@@ -124,10 +179,22 @@ function translateName(englishName: string): string {
 function extractNutrients(foodNutrients: any[]): Record<string, number> {
   const result: Record<string, number> = {};
   for (const n of foodNutrients) {
-    const nutrientId = String(n.nutrient?.id ?? n.nutrientId ?? "");
-    const field = NUTRIENT_IDS[nutrientId];
-    if (field && n.amount != null) {
-      result[field] = Number(n.amount);
+    const amount = n.amount ?? n.value;
+    if (amount == null) continue;
+
+    // Try all possible ID fields from both search and detail responses
+    const ids: string[] = [];
+    if (n.nutrient?.id) ids.push(String(n.nutrient.id));
+    if (n.nutrient?.number) ids.push(String(n.nutrient.number));
+    if (n.nutrientId) ids.push(String(n.nutrientId));
+    if (n.nutrientNumber) ids.push(String(n.nutrientNumber));
+
+    for (const id of ids) {
+      const field = NUTRIENT_IDS[id];
+      if (field) {
+        result[field] = Number(amount);
+        break;
+      }
     }
   }
   return result;
@@ -135,16 +202,16 @@ function extractNutrients(foodNutrients: any[]): Record<string, number> {
 
 function mapCategory(usda: string): string {
   const u = usda.toLowerCase();
-  if (u.includes("chicken") || u.includes("beef") || u.includes("pork") || u.includes("poultry")) return "meat";
-  if (u.includes("fish") || u.includes("salmon") || u.includes("tuna") || u.includes("seafood")) return "fish";
+  if (u.includes("chicken") || u.includes("beef") || u.includes("pork") || u.includes("poultry") || u.includes("lamb") || u.includes("turkey")) return "meat_fish";
+  if (u.includes("fish") || u.includes("salmon") || u.includes("tuna") || u.includes("seafood") || u.includes("shrimp") || u.includes("sardine")) return "meat_fish";
   if (u.includes("egg")) return "egg";
-  if (u.includes("milk") || u.includes("cheese") || u.includes("yogurt") || u.includes("dairy")) return "dairy";
-  if (u.includes("rice") || u.includes("oat") || u.includes("bread") || u.includes("pasta") || u.includes("grain") || u.includes("wheat") || u.includes("quinoa")) return "grain";
-  if (u.includes("apple") || u.includes("banana") || u.includes("berry") || u.includes("orange") || u.includes("fruit")) return "fruit";
-  if (u.includes("broccoli") || u.includes("spinach") || u.includes("carrot") || u.includes("tomato") || u.includes("pepper") || u.includes("vegetable") || u.includes("potato")) return "vegetable";
-  if (u.includes("almond") || u.includes("walnut") || u.includes("peanut") || u.includes("nut") || u.includes("seed") || u.includes("chia")) return "nuts";
-  if (u.includes("bean") || u.includes("lentil") || u.includes("chickpea") || u.includes("legume")) return "legume";
-  if (u.includes("oil") || u.includes("avocado") || u.includes("fat")) return "fat";
+  if (u.includes("milk") || u.includes("cheese") || u.includes("yogurt") || u.includes("dairy") || u.includes("cream")) return "dairy";
+  if (u.includes("rice") || u.includes("oat") || u.includes("bread") || u.includes("pasta") || u.includes("grain") || u.includes("wheat") || u.includes("quinoa") || u.includes("cereal") || u.includes("flour")) return "grain";
+  if (u.includes("apple") || u.includes("banana") || u.includes("berry") || u.includes("orange") || u.includes("fruit") || u.includes("mango") || u.includes("grape") || u.includes("peach") || u.includes("pear")) return "fruit";
+  if (u.includes("broccoli") || u.includes("spinach") || u.includes("carrot") || u.includes("tomato") || u.includes("pepper") || u.includes("vegetable") || u.includes("potato") || u.includes("lettuce") || u.includes("onion") || u.includes("cabbage")) return "vegetable";
+  if (u.includes("almond") || u.includes("walnut") || u.includes("peanut") || u.includes("nut") || u.includes("seed") || u.includes("chia") || u.includes("coconut")) return "nuts";
+  if (u.includes("bean") || u.includes("lentil") || u.includes("chickpea") || u.includes("legume") || u.includes("soy")) return "legume";
+  if (u.includes("oil") || u.includes("avocado") || u.includes("butter") || u.includes("margarine")) return "fat";
   return "other";
 }
 
