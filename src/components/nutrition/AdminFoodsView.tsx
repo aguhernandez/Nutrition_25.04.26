@@ -156,13 +156,16 @@ export default function AdminFoodsView({ onBack }: Props) {
   const [usdaQuery, setUsdaQuery] = useState('');
   const [usdaResults, setUsdaResults] = useState<USDASearchResult[]>([]);
   const [usdaLoading, setUsdaLoading] = useState(false);
+  const [usdaLoadingMore, setUsdaLoadingMore] = useState(false);
   const [usdaError, setUsdaError] = useState('');
   const [usdaImporting, setUsdaImporting] = useState<number | null>(null);
   const [usdaImported, setUsdaImported] = useState<Set<number>>(new Set());
   const [showUsda, setShowUsda] = useState(false);
   const [usdaTotalHits, setUsdaTotalHits] = useState(0);
+  const [usdaPage, setUsdaPage] = useState(1);
   const [usdaApiMissing, setUsdaApiMissing] = useState(false);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
+  const USDA_PAGE_SIZE = 30;
 
   const cardBg = isDark ? '#1e1a2e' : '#ffffff';
   const cardBorder = isDark ? '#2d2640' : '#e5e7eb';
@@ -194,30 +197,41 @@ export default function AdminFoodsView({ onBack }: Props) {
     setLoading(false);
   };
 
-  const searchUSDA = async () => {
+  const searchUSDA = async (page = 1, append = false) => {
     if (!usdaQuery.trim()) return;
-    setUsdaLoading(true);
+    if (append) {
+      setUsdaLoadingMore(true);
+    } else {
+      setUsdaLoading(true);
+      setUsdaResults([]);
+    }
     setUsdaError('');
     setUsdaApiMissing(false);
     try {
       const json = await callUSDAProxy(
-        `/search?query=${encodeURIComponent(usdaQuery)}&pageSize=15&dataType=Foundation,SR%20Legacy`
+        `/search?query=${encodeURIComponent(usdaQuery)}&pageSize=${USDA_PAGE_SIZE}&pageNumber=${page}&dataType=Foundation,SR%20Legacy`
       );
       if (json.error && json.error.includes('USDA_API_KEY')) {
         setUsdaApiMissing(true);
-        setUsdaResults([]);
+        if (!append) setUsdaResults([]);
       } else if (json.foods && json.foods.length > 0) {
-        setUsdaResults(json.foods as USDASearchResult[]);
+        setUsdaResults((prev) => append ? [...prev, ...(json.foods as USDASearchResult[])] : (json.foods as USDASearchResult[]));
         setUsdaTotalHits(json.totalHits ?? 0);
-      } else {
+        setUsdaPage(page);
+      } else if (!append) {
         setUsdaError(language === 'es' ? 'Sin resultados. Intenta otro termino.' : 'No results found. Try a different term.');
         setUsdaResults([]);
       }
     } catch {
       setUsdaError(language === 'es' ? 'Error al conectar con USDA.' : 'Could not reach USDA. Check connection.');
-      setUsdaResults([]);
+      if (!append) setUsdaResults([]);
     }
     setUsdaLoading(false);
+    setUsdaLoadingMore(false);
+  };
+
+  const loadMoreUSDA = () => {
+    searchUSDA(usdaPage + 1, true);
   };
 
   const startImport = (result: USDASearchResult) => {
@@ -372,7 +386,7 @@ export default function AdminFoodsView({ onBack }: Props) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => { setShowUsda(true); setUsdaResults([]); setUsdaQuery(''); setUsdaError(''); setUsdaImported(new Set()); setImportDraft(null); }}
+            onClick={() => { setShowUsda(true); setUsdaResults([]); setUsdaQuery(''); setUsdaError(''); setUsdaImported(new Set()); setImportDraft(null); setUsdaPage(1); setUsdaTotalHits(0); }}
             className="flex items-center gap-2 py-2 px-4 rounded-xl border font-body text-sm font-medium transition-colors"
             style={{ borderColor: cardBorder, backgroundColor: cardBg, color: textMain }}
           >
@@ -485,11 +499,11 @@ export default function AdminFoodsView({ onBack }: Props) {
             <div className="p-4 border-b" style={{ borderColor: cardBorder }}>
               <div className="flex gap-2">
                 <input type="text" value={usdaQuery} onChange={(e) => setUsdaQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && searchUSDA()}
+                  onKeyDown={(e) => e.key === 'Enter' && searchUSDA(1, false)}
                   placeholder="Search USDA (e.g., chicken breast, butter, salmon...)"
                   className="flex-1 px-4 py-2.5 rounded-xl border font-body text-sm"
                   style={{ borderColor: cardBorder, backgroundColor: isDark ? '#150f23' : '#ffffff', color: textMain }} autoFocus />
-                <button onClick={searchUSDA} disabled={usdaLoading || !usdaQuery.trim()}
+                <button onClick={() => searchUSDA(1, false)} disabled={usdaLoading || !usdaQuery.trim()}
                   className="px-4 py-2 rounded-xl flex items-center gap-2 flex-shrink-0 font-body text-sm font-semibold disabled:opacity-50"
                   style={{ backgroundColor: '#514163', color: '#fdda36' }}>
                   {usdaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
@@ -542,6 +556,28 @@ export default function AdminFoodsView({ onBack }: Props) {
                       </div>
                     );
                   })}
+
+                  {usdaResults.length < usdaTotalHits && (
+                    <button
+                      onClick={loadMoreUSDA}
+                      disabled={usdaLoadingMore}
+                      className="w-full mt-3 py-3 rounded-xl border font-body text-sm font-semibold flex items-center justify-center gap-2 transition-colors"
+                      style={{ borderColor: cardBorder, color: textMain, backgroundColor: isDark ? '#251f38' : '#f9fafb' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = isDark ? '#2d2640' : '#f1f5f9'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = isDark ? '#251f38' : '#f9fafb'; }}
+                    >
+                      {usdaLoadingMore ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          {language === 'es' ? 'Cargar mas resultados' : 'Load more results'}
+                          <span className="font-normal" style={{ color: textDim }}>
+                            ({usdaResults.length} / {usdaTotalHits.toLocaleString()})
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
 

@@ -235,6 +235,7 @@ Deno.serve(async (req: Request) => {
     if (path === "/search" || path === "") {
       const query = url.searchParams.get("query") ?? "";
       const pageSize = url.searchParams.get("pageSize") ?? "25";
+      const pageNumber = url.searchParams.get("pageNumber") ?? "1";
       const dataType = url.searchParams.get("dataType") ?? "Foundation,SR Legacy";
 
       if (!query) {
@@ -244,7 +245,7 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      const usdaUrl = `${USDA_BASE}/foods/search?query=${encodeURIComponent(query)}&pageSize=${pageSize}&dataType=${encodeURIComponent(dataType)}&api_key=${apiKey}`;
+      const usdaUrl = `${USDA_BASE}/foods/search?query=${encodeURIComponent(query)}&pageSize=${pageSize}&pageNumber=${pageNumber}&dataType=${encodeURIComponent(dataType)}&api_key=${apiKey}`;
       const usdaRes = await fetch(usdaUrl);
       const usdaData = await usdaRes.json();
 
