@@ -33,6 +33,7 @@ Deno.serve(async (req: Request) => {
       "athlete-habits",
       "wellness",
       "biological-passport",
+      "coach-athletes",
     ];
 
     if (!ALLOWED_ENDPOINTS.includes(endpoint)) {

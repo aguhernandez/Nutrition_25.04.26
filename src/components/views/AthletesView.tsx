@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Users, ChevronRight, Search, MapPin, Calendar, Apple, Trophy, ArrowLeft, Activity, Download, RefreshCw } from 'lucide-react';
+import { Users, ChevronRight, Search, MapPin, Calendar, Apple, Trophy, ArrowLeft, Activity, Download, RefreshCw, CloudOff } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { getCoachAthletes } from '../../lib/hubApi';
 import TrainingSneakPeek from './TrainingSneakPeek';
 import HubBiologicalPassport from '../nutrition/HubBiologicalPassport';
 import HubFoodDiary from '../nutrition/HubFoodDiary';
@@ -14,6 +15,8 @@ interface AthleteProfile {
   email: string;
   full_name: string;
   role: string;
+  hub_user_id?: string;
+  hasLocalProfile?: boolean;
 }
 
 interface Competition {
@@ -313,6 +316,7 @@ export default function AthletesView() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<AthleteDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [hubFailed, setHubFailed] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
   const isCoach = profile?.role === 'coach';
@@ -323,25 +327,97 @@ export default function AthletesView() {
       return;
     }
     (async () => {
-      let query = supabase.from('profiles').select('id, email, full_name, role').eq('role', 'athlete');
-      if (!isAdmin && isCoach) {
-        // coaches see all athletes for now (can be scoped later)
+      setHubFailed(false);
+
+      // Load local profiles as baseline
+      const { data: localData } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, hub_user_id')
+        .eq('role', 'athlete')
+        .order('full_name', { ascending: true });
+
+      const localAthletes: AthleteProfile[] = (localData ?? []).map((p: any) => ({
+        ...p,
+        hasLocalProfile: true,
+      }));
+
+      // Try Hub for coach's full athlete roster
+      if ((isCoach || isAdmin) && (profile?.hub_user_id || profile?.email)) {
+        try {
+          const hubRes = await getCoachAthletes(profile.hub_user_id || profile.email);
+          const hubAthletes = hubRes.athletes ?? [];
+
+          if (hubAthletes.length > 0) {
+            const localEmails = new Set(localAthletes.map((a) => a.email.toLowerCase()));
+            const localHubIds = new Set(localAthletes.map((a) => a.hub_user_id).filter(Boolean));
+
+            const merged = [...localAthletes];
+
+            for (const ha of hubAthletes) {
+              const emailMatch = localEmails.has(ha.email.toLowerCase());
+              const idMatch = ha.id && localHubIds.has(ha.id);
+              if (!emailMatch && !idMatch) {
+                merged.push({
+                  id: ha.id,
+                  email: ha.email,
+                  full_name: ha.full_name || ha.name || ha.email.split('@')[0],
+                  role: 'athlete',
+                  hub_user_id: ha.id,
+                  hasLocalProfile: false,
+                });
+              }
+            }
+
+            merged.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+            setAthletes(merged);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          setHubFailed(true);
+        }
       }
-      const { data } = await query.order('full_name', { ascending: true });
-      setAthletes(data ?? []);
+
+      setAthletes(localAthletes);
       setLoading(false);
     })();
   }, [user?.id, isAdmin, isCoach]);
 
   const openAthlete = async (ap: AthleteProfile) => {
     setDetailLoading(true);
+
+    // Auto-create local profile if needed
+    let effectiveId = ap.id;
+    if (!ap.hasLocalProfile) {
+      const newProfile = {
+        id: ap.hub_user_id || undefined,
+        hub_user_id: ap.hub_user_id || ap.id,
+        email: ap.email,
+        full_name: ap.full_name,
+        role: 'athlete',
+        membership_slug: 'inicia',
+        membership_name: 'Asciende Inicia',
+      };
+      const { data } = await supabase
+        .from('profiles')
+        .upsert(newProfile, { onConflict: 'hub_user_id' })
+        .select()
+        .maybeSingle();
+      if (data) {
+        effectiveId = data.id;
+        setAthletes((prev) =>
+          prev.map((a) => a.email === ap.email ? { ...a, id: data.id, hasLocalProfile: true } : a)
+        );
+      }
+    }
+
     const [compRes, planRes, anamRes] = await Promise.all([
-      supabase.from('competitions').select('*').eq('athlete_id', ap.id).order('race_date', { ascending: false }),
-      supabase.from('meal_plans').select('id, user_id, name, plan_type, created_at, meals').eq('user_id', ap.id).order('created_at', { ascending: false }),
-      supabase.from('nutrition_anamnesis').select('*').eq('user_id', ap.id).maybeSingle(),
+      supabase.from('competitions').select('*').eq('athlete_id', effectiveId).order('race_date', { ascending: false }),
+      supabase.from('meal_plans').select('id, user_id, name, plan_type, created_at, meals').eq('user_id', effectiveId).order('created_at', { ascending: false }),
+      supabase.from('nutrition_anamnesis').select('*').eq('user_id', effectiveId).maybeSingle(),
     ]);
     setSelected({
-      profile: ap,
+      profile: { ...ap, id: effectiveId },
       competitions: compRes.data ?? [],
       mealPlans: planRes.data ?? [],
       anamnesis: anamRes.data ?? null,
@@ -398,6 +474,15 @@ export default function AthletesView() {
         </div>
       )}
 
+      {hubFailed && (
+        <div className="rounded-2xl p-4 flex items-center gap-3" style={{ backgroundColor: '#fef9c3', border: '1px solid #fcd34d' }}>
+          <CloudOff className="w-5 h-5 flex-shrink-0" style={{ color: '#b45309' }} />
+          <p className="text-sm" style={{ color: '#92400e' }}>
+            Could not reach Hub. Showing local athletes only.
+          </p>
+        </div>
+      )}
+
       {detailLoading && (
         <div className="flex items-center justify-center min-h-32">
           <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#fdda36', borderTopColor: 'transparent' }} />
@@ -438,6 +523,11 @@ export default function AthletesView() {
                   <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ backgroundColor: '#f0fdf4', color: '#15803d' }}>
                     {athlete.role}
                   </span>
+                  {athlete.hasLocalProfile === false && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ backgroundColor: '#dbeafe', color: '#1d4ed8' }}>
+                      Hub
+                    </span>
+                  )}
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#9ca3af' }} />

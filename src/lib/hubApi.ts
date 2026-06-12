@@ -596,3 +596,28 @@ export function pushRacePlan(
     }).then((r) => handleResponse<{ success: boolean; id?: string }>(r))
   );
 }
+
+// ─── Coach Athletes ──────────────────────────────────────────────────────────
+
+export interface HubCoachAthlete {
+  id: string;
+  email: string;
+  full_name?: string;
+  name?: string;
+  sport_primary?: string;
+  membership_slug?: string;
+}
+
+export interface HubCoachAthletesResponse {
+  athletes?: HubCoachAthlete[];
+}
+
+export function getCoachAthletes(coachEmailOrId: string): Promise<HubCoachAthletesResponse> {
+  const param = athleteParam(coachEmailOrId).replace('athlete_', 'coach_');
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/coach-athletes?${param}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubCoachAthletesResponse>(r))
+  );
+}
