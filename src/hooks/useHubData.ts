@@ -11,6 +11,7 @@ import {
   getEnduranceData,
   HubApiError,
   type HubAnthropometry,
+  type HubBiologicalPassportData,
   type HubTrainingSchedule,
   type HubFoodDiary,
   type HubAthleteProfile,
@@ -67,10 +68,8 @@ export function useHubAnthropometry(athleteEmailOrId: string | null | undefined)
   return { data, loading, error, refetch };
 }
 
-// Fetches from the dedicated biological-passport endpoint (ISAK / Kerr data).
-// Reuses HubAnthropometry shape since the data structure is compatible.
 export function useHubBiologicalPassport(athleteEmailOrId: string | null | undefined) {
-  const [data, setData] = useState<HubAnthropometry | null>(null);
+  const [data, setData] = useState<HubBiologicalPassportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef<string | null>(null);

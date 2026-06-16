@@ -395,13 +395,54 @@ export function getAnthropometry(athleteEmailOrId: string, limit = 5): Promise<H
   );
 }
 
-/** Calls the dedicated biological-passport endpoint (ISAK / Kerr data). */
-export function getBiologicalPassport(athleteEmailOrId: string): Promise<HubAnthropometry> {
+export interface HubBiologicalPassportData {
+  id?: string;
+  version_number?: number;
+  status?: string;
+  source?: string;
+  measurement_date?: string;
+  vo2max?: number;
+  lt1_power?: number | null;
+  lt2_power?: number | null;
+  lt1_hr?: number | null;
+  lt2_hr?: number | null;
+  ftp_watts?: number | null;
+  critical_power?: number | null;
+  anaerobic_capacity_kj?: number | null;
+  running_threshold_pace?: string | number | null;
+  sport_context?: string;
+  power_zones_json?: Record<string, unknown>;
+  hr_zones_json?: Record<string, unknown>;
+  rpe_zones_json?: Record<string, unknown>;
+  height_cm?: number;
+  weight_kg?: number;
+  body_fat_percent?: number;
+  muscle_mass_kg?: number;
+  lean_mass_kg?: number;
+  bone_mass_kg?: number;
+  training_age_years?: number | null;
+  athlete_level?: string;
+  skinfold_sum_6?: number | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+/** Calls the dedicated biological-passport endpoint from the nutrition-satellite-bridge. */
+export function getBiologicalPassport(athleteEmailOrId: string): Promise<HubBiologicalPassportData> {
   return rateLimiter.execute(() =>
     fetch(`${PROXY_BASE}/biological-passport?${athleteParam(athleteEmailOrId)}`, {
       method: 'GET',
       headers: getProxyHeaders(),
-    }).then((r) => handleResponse<HubAnthropometry>(r))
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      // Hub wraps in { biological_passport: {...} }
+      if (raw && typeof raw === 'object' && 'biological_passport' in raw && raw.biological_passport && typeof raw.biological_passport === 'object') {
+        return raw.biological_passport as HubBiologicalPassportData;
+      }
+      return raw as HubBiologicalPassportData;
+    })
   );
 }
 
