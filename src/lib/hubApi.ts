@@ -294,23 +294,69 @@ export function getAthleteProfile(athleteEmailOrId: string): Promise<HubAthleteP
 }
 
 export interface HubNutritionAnamnesis {
+  id?: string;
+  athlete_id?: string;
+  age?: number;
+  sex?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  occupation?: string;
+  activity_level?: string;
+  work_hours?: string;
+  medical_conditions?: string;
+  medications_supplements?: string;
+  allergies_intolerances?: string;
+  sleep_hours?: number;
+  sleep_quality?: string;
+  energy_levels?: string;
+  stress_level?: number;
+  alcohol_frequency?: string;
+  smoking_frequency?: string;
+  sport?: string;
+  training_frequency?: string;
+  training_hours_weekly?: number;
+  training_time?: string;
+  pre_workout_nutrition?: string;
+  during_workout_nutrition?: string;
+  post_workout_nutrition?: string;
+  eating_pattern?: string;
+  dietary_preferences?: string;
+  dietary_restrictions?: string;
+  breakfast_description?: string;
+  lunch_description?: string;
+  dinner_description?: string;
+  snacks_description?: string;
+  beverages_description?: string;
+  food_likes?: string;
+  food_dislikes?: string;
+  food_allergies?: string;
+  cooking_frequency?: string;
+  eating_out_frequency?: string;
+  appetite_changes?: string;
+  relationship_with_food?: string;
+  main_goal?: string;
+  nutrition_goals?: string;
+  performance_expectations?: string;
+  upcoming_events?: string;
+  additional_notes?: string;
+  section_progress?: number;
+  is_complete?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  // Legacy field aliases
   primary_sport?: string;
   sport_primary?: string;
-  sport_secondary?: string;
   weekly_training_hours?: number;
   training_hours_per_week?: number;
   dietary_pattern?: string;
   diet_type?: string;
   food_restrictions?: string[];
-  food_allergies?: string[];
   intolerances?: string[];
   meal_frequency?: number;
   meals_per_day?: number;
   supplements?: string[];
   hydration_liters_daily?: number;
   hydration_daily?: number;
-  sleep_hours?: number;
-  sleep_quality?: number;
   target_weight_kg?: number;
   goal_weight_kg?: number;
   weight_goal?: string;
@@ -319,8 +365,6 @@ export interface HubNutritionAnamnesis {
   target_protein_g?: number;
   target_carbs_g?: number;
   target_fat_g?: number;
-  created_at?: string;
-  updated_at?: string;
   notes?: string;
   coach_notes?: string;
   [key: string]: unknown;
@@ -331,7 +375,14 @@ export function getNutritionAnamnesis(athleteEmailOrId: string): Promise<HubNutr
     fetch(`${PROXY_BASE}/nutrition-anamnesis?${athleteParam(athleteEmailOrId)}`, {
       method: 'GET',
       headers: getProxyHeaders(),
-    }).then((r) => handleResponse<HubNutritionAnamnesis>(r))
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      // Hub wraps in { anamnesis: {...} }
+      if (raw && typeof raw === 'object' && 'anamnesis' in raw && raw.anamnesis && typeof raw.anamnesis === 'object') {
+        return raw.anamnesis as HubNutritionAnamnesis;
+      }
+      return raw as HubNutritionAnamnesis;
+    })
   );
 }
 
@@ -414,6 +465,44 @@ function normalizeFoodDiaryResponse(raw: Record<string, unknown>): HubFoodDiary 
     return raw as HubFoodDiary;
   }
 
+  // Hub nutrition-satellite-bridge returns { food_diary_sessions: [...] }
+  const sessions = raw.food_diary_sessions as Array<Record<string, unknown>> | undefined;
+  if (Array.isArray(sessions)) {
+    const entries: HubFoodDiaryEntry[] = [];
+    const totals_by_day: HubFoodDiary['totals_by_day'] = {};
+
+    for (const session of sessions) {
+      const day = (session.start_date as string ?? '').slice(0, 10);
+      if (!day) continue;
+
+      // Session-level totals
+      if (!totals_by_day[day]) totals_by_day[day] = {};
+      const t = totals_by_day[day]!;
+      t.kcal = (t.kcal ?? 0) + ((session.total_calories as number) ?? 0);
+      t.protein_g = (t.protein_g ?? 0) + ((session.total_protein_g as number) ?? 0);
+      t.carbs_g = (t.carbs_g ?? 0) + ((session.total_carbs_g as number) ?? 0);
+      t.fat_g = (t.fat_g ?? 0) + ((session.total_fat_g as number) ?? 0);
+
+      // Individual entries
+      const sessionEntries = session.entries as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(sessionEntries)) {
+        for (const e of sessionEntries) {
+          entries.push({
+            date: day,
+            meal_type: (e.meal_type as string) ?? undefined,
+            food_name: (e.food_description as string) ?? (e.food_name as string) ?? undefined,
+            food_name_es: (e.food_description as string) ?? undefined,
+            kcal: (e.estimated_calories as number) ?? (e.kcal as number) ?? undefined,
+            protein_g: (e.estimated_protein_g as number) ?? (e.protein_g as number) ?? undefined,
+            carbs_g: (e.estimated_carbs_g as number) ?? (e.carbs_g as number) ?? undefined,
+            fat_g: (e.estimated_fat_g as number) ?? (e.fat_g as number) ?? undefined,
+          });
+        }
+      }
+    }
+    return { entries, totals_by_day };
+  }
+
   // Hub returns { diary_entries: [...] }
   const rawEntries =
     (raw.diary_entries as HubFoodDiaryEntry[] | undefined) ??
@@ -435,7 +524,7 @@ function normalizeFoodDiaryResponse(raw: Record<string, unknown>): HubFoodDiary 
     return { entries: rawEntries, totals_by_day };
   }
 
-  // Hub returns nested by day: { days: { "2026-06-16": { entries: [...], totals: {...} } } }
+  // Hub returns nested by day
   const rawDays =
     (raw.days as Record<string, unknown> | undefined) ??
     (raw.diary as Record<string, unknown> | undefined);
@@ -451,13 +540,13 @@ function normalizeFoodDiaryResponse(raw: Record<string, unknown>): HubFoodDiary 
           entries.push({ ...e, date: e.date ?? day });
         }
       }
-      const t = (d.totals ?? d.summary ?? d.macros) as Record<string, number> | undefined;
-      if (t) {
+      const tt = (d.totals ?? d.summary ?? d.macros) as Record<string, number> | undefined;
+      if (tt) {
         totals_by_day[day] = {
-          kcal: t.kcal ?? t.calories,
-          protein_g: t.protein_g ?? t.protein,
-          carbs_g: t.carbs_g ?? t.carbs ?? t.carbohydrates,
-          fat_g: t.fat_g ?? t.fat,
+          kcal: tt.kcal ?? tt.calories,
+          protein_g: tt.protein_g ?? tt.protein,
+          carbs_g: tt.carbs_g ?? tt.carbs ?? tt.carbohydrates,
+          fat_g: tt.fat_g ?? tt.fat,
         };
       }
     }

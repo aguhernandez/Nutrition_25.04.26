@@ -44,13 +44,27 @@ export default function HubAnamnesisCard({ athleteEmail }: Props) {
   const fat = anamnesis?.target_fat_g;
   const hasNutritionTargets = kcal != null || protein != null || carbs != null || fat != null;
 
-  const weeklyHours = anamnesis?.weekly_training_hours ?? anamnesis?.training_hours_per_week;
-  const dietType = anamnesis?.dietary_pattern ?? anamnesis?.diet_type;
-  const sport = anamnesis?.primary_sport ?? anamnesis?.sport_primary ?? profile?.sport_primary;
+  const weeklyHours = anamnesis?.training_hours_weekly ?? anamnesis?.weekly_training_hours ?? anamnesis?.training_hours_per_week;
+  const dietType = anamnesis?.dietary_preferences ?? anamnesis?.dietary_pattern ?? anamnesis?.diet_type;
+  const sport = anamnesis?.sport ?? anamnesis?.primary_sport ?? anamnesis?.sport_primary ?? profile?.sport_primary;
   const sleepHours = anamnesis?.sleep_hours;
   const hydration = anamnesis?.hydration_liters_daily ?? anamnesis?.hydration_daily;
-  const restrictions = anamnesis?.food_restrictions ?? anamnesis?.food_allergies ?? anamnesis?.intolerances;
-  const supplements = anamnesis?.supplements;
+  const eatingPattern = anamnesis?.eating_pattern;
+  const activityLevel = anamnesis?.activity_level;
+  const trainingFreq = anamnesis?.training_frequency;
+  const mainGoal = anamnesis?.main_goal;
+
+  // Build restrictions list from string fields
+  const restrictionsList: string[] = [];
+  if (anamnesis?.dietary_restrictions) restrictionsList.push(...anamnesis.dietary_restrictions.split(',').map((s: string) => s.trim()).filter(Boolean));
+  if (anamnesis?.food_allergies && typeof anamnesis.food_allergies === 'string') restrictionsList.push(...anamnesis.food_allergies.split(',').map((s: string) => s.trim()).filter(Boolean));
+  if (anamnesis?.allergies_intolerances) restrictionsList.push(...anamnesis.allergies_intolerances.split(',').map((s: string) => s.trim()).filter(Boolean));
+  if (Array.isArray(anamnesis?.food_restrictions)) restrictionsList.push(...anamnesis.food_restrictions);
+  if (Array.isArray(anamnesis?.intolerances)) restrictionsList.push(...anamnesis.intolerances);
+
+  const supplementsList: string[] = [];
+  if (anamnesis?.medications_supplements) supplementsList.push(...anamnesis.medications_supplements.split(',').map((s: string) => s.trim()).filter(Boolean));
+  if (Array.isArray(anamnesis?.supplements)) supplementsList.push(...anamnesis.supplements);
 
   const hasProfile = !!profile;
   const hasAnamnesis = !!anamnesis && Object.keys(anamnesis).length > 0;
@@ -171,11 +185,15 @@ export default function HubAnamnesisCard({ athleteEmail }: Props) {
                   {/* Training & diet overview */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <Field label="Deporte" value={sport} />
+                    <Field label="Frecuencia" value={trainingFreq} />
                     <Field label="Hrs entrenamiento/sem" value={weeklyHours != null ? `${weeklyHours}h` : null} />
-                    <Field label="Patrón alimentario" value={dietType} />
-                    <Field label="Comidas/día" value={anamnesis.meal_frequency ?? anamnesis.meals_per_day} />
-                    <Field label="Peso objetivo" value={anamnesis.target_weight_kg != null || anamnesis.goal_weight_kg != null ? `${anamnesis.target_weight_kg ?? anamnesis.goal_weight_kg} kg` : null} />
-                    <Field label="Objetivo de peso" value={anamnesis.weight_goal} />
+                    <Field label="Nivel actividad" value={activityLevel} />
+                    <Field label="Preferencia dietaria" value={dietType} />
+                    <Field label="Patrón alimentario" value={eatingPattern} />
+                    <Field label="Objetivo principal" value={mainGoal} />
+                    <Field label="Edad" value={anamnesis.age} />
+                    <Field label="Peso" value={anamnesis.weight_kg != null ? `${anamnesis.weight_kg} kg` : null} />
+                    <Field label="Talla" value={anamnesis.height_cm != null ? `${anamnesis.height_cm} cm` : null} />
                   </div>
 
                   {/* Recovery metrics */}
@@ -185,8 +203,8 @@ export default function HubAnamnesisCard({ athleteEmail }: Props) {
                         <div className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
                           <Moon className="w-4 h-4 flex-shrink-0" style={{ color: '#8b5cf6' }} />
                           <div>
-                            <div className="text-sm font-bold" style={{ color: '#1f2937' }}>{sleepHours}h</div>
-                            <div className="text-xs" style={{ color: '#9ca3af' }}>Sueño</div>
+                            <div className="text-sm font-bold" style={{ color: '#1f2937' }}>{sleepHours}h ({anamnesis.sleep_quality ?? ''})</div>
+                            <div className="text-xs" style={{ color: '#9ca3af' }}>Sueno</div>
                           </div>
                         </div>
                       )}
@@ -195,31 +213,65 @@ export default function HubAnamnesisCard({ athleteEmail }: Props) {
                           <Droplets className="w-4 h-4 flex-shrink-0" style={{ color: '#06b6d4' }} />
                           <div>
                             <div className="text-sm font-bold" style={{ color: '#1f2937' }}>{hydration}L</div>
-                            <div className="text-xs" style={{ color: '#9ca3af' }}>Hidratación</div>
+                            <div className="text-xs" style={{ color: '#9ca3af' }}>Hidratacion</div>
                           </div>
                         </div>
                       )}
                     </div>
                   )}
 
+                  {/* Medical conditions */}
+                  {anamnesis.medical_conditions && (
+                    <div className="rounded-xl px-3 py-2" style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#b91c1c' }}>Condiciones medicas</p>
+                      <p className="text-sm" style={{ color: '#991b1b' }}>{anamnesis.medical_conditions}</p>
+                    </div>
+                  )}
+
                   {/* Restrictions / Supplements */}
-                  {(restrictions && restrictions.length > 0) && (
+                  {restrictionsList.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b7280' }}>Restricciones / Intolerancias</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {restrictions.map((r, i) => (
+                        {restrictionsList.map((r, i) => (
                           <span key={i} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fef2f2', color: '#b91c1c' }}>{r}</span>
                         ))}
                       </div>
                     </div>
                   )}
-                  {(supplements && supplements.length > 0) && (
+                  {supplementsList.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b7280' }}>Suplementos</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#6b7280' }}>Suplementos / Medicamentos</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {supplements.map((s, i) => (
+                        {supplementsList.map((s, i) => (
                           <span key={i} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f0fdf4', color: '#15803d' }}>{s}</span>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Meal descriptions */}
+                  {(anamnesis.breakfast_description || anamnesis.lunch_description || anamnesis.dinner_description || anamnesis.snacks_description) && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>Descripcion de comidas habituales</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Field label="Desayuno" value={anamnesis.breakfast_description} />
+                        <Field label="Almuerzo" value={anamnesis.lunch_description} />
+                        <Field label="Cena" value={anamnesis.dinner_description} />
+                        <Field label="Snacks" value={anamnesis.snacks_description} />
+                        <Field label="Bebidas" value={anamnesis.beverages_description} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Training nutrition */}
+                  {(anamnesis.pre_workout_nutrition || anamnesis.during_workout_nutrition || anamnesis.post_workout_nutrition) && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>Nutricion peri-entrenamiento</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Field label="Pre-entreno" value={anamnesis.pre_workout_nutrition} />
+                        <Field label="Durante" value={anamnesis.during_workout_nutrition} />
+                        <Field label="Post-entreno" value={anamnesis.post_workout_nutrition} />
                       </div>
                     </div>
                   )}
@@ -234,9 +286,9 @@ export default function HubAnamnesisCard({ athleteEmail }: Props) {
                         </span>
                       </div>
                       <div className="grid grid-cols-4 gap-2">
-                        <MacroTile label="Calorías" value={kcal} unit="kcal" color="#f59e0b" />
+                        <MacroTile label="Calorias" value={kcal} unit="kcal" color="#f59e0b" />
                         <MacroTile label="CH" value={carbs} unit="g" color="#3b82f6" />
-                        <MacroTile label="Proteína" value={protein} unit="g" color="#10b981" />
+                        <MacroTile label="Proteina" value={protein} unit="g" color="#10b981" />
                         <MacroTile label="Grasa" value={fat} unit="g" color="#f97316" />
                       </div>
                     </div>
