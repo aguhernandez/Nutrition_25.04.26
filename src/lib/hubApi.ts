@@ -169,6 +169,11 @@ export interface HubTrainingSchedule {
   completed_training_logs?: HubTrainingDay[];
   workouts?: HubTrainingDay[];
   logs?: HubTrainingDay[];
+  /** GPS / free / unstructured activities recorded by the athlete */
+  free_activities?: HubTrainingDay[];
+  activities?: HubTrainingDay[];
+  training_activities?: HubTrainingDay[];
+  gps_activities?: HubTrainingDay[];
   weekly_loads?: Array<{
     week_start: string;
     tss?: number;
@@ -597,8 +602,60 @@ export function pushRacePlan(
   );
 }
 
-// ─── Coach Athletes ──────────────────────────────────────────────────────────
+// ─── Endurance Data ──────────────────────────────────────────────────────────
 
+export interface HubEnduranceActivity {
+  id?: string;
+  date: string;
+  activity_type?: string;
+  session_type?: string;
+  title?: string;
+  sport?: string;
+  distance_km?: number;
+  duration_min?: number;
+  duration_minutes?: number;
+  avg_pace_min_km?: number;
+  avg_speed_kmh?: number;
+  avg_hr?: number;
+  max_hr?: number;
+  elevation_gain_m?: number;
+  calories_burned?: number;
+  tss?: number;
+  intensity_color?: string;
+  intensity_label?: string;
+  source?: string;
+  validated?: boolean;
+  notes?: string;
+}
+
+export interface HubEnduranceData {
+  activities?: HubEnduranceActivity[];
+  recent_activities?: HubEnduranceActivity[];
+  training_logs?: HubEnduranceActivity[];
+  summary?: {
+    total_distance_km?: number;
+    total_duration_min?: number;
+    total_activities?: number;
+    avg_pace_min_km?: number;
+    weekly_volume_km?: number;
+  };
+}
+
+export function getEnduranceData(
+  athleteEmailOrId: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<HubEnduranceData> {
+  const dateParams = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : '';
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/endurance-data?${athleteParam(athleteEmailOrId)}${dateParams}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubEnduranceData>(r))
+  );
+}
+
+// ─── Coach Athletes ──────────────────────────────────────────────────────────
 export interface HubCoachAthlete {
   id: string;
   email: string;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useHubTrainingSchedule } from '../../hooks/useHubData';
+import { useHubTrainingSchedule, useHubEnduranceData } from '../../hooks/useHubData';
 import type { HubTrainingDay } from '../../lib/hubApi';
 
 interface TrainingSession {
@@ -150,6 +150,10 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   const hubTarget = athleteEmail ?? null;
   const { data: hubData, loading: hubLoading, error: hubError } = useHubTrainingSchedule(hubTarget);
 
+  const enduranceDateFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
+  const enduranceDateTo = new Date().toISOString().slice(0, 10);
+  const { data: enduranceData, loading: enduranceLoading } = useHubEnduranceData(hubTarget, enduranceDateFrom, enduranceDateTo);
+
   useEffect(() => {
     if (!athleteId || athleteId.startsWith('demo-')) {
       setLocalLoading(false);
@@ -188,10 +192,20 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
     const all = [
       ...(hubData?.scheduled_workouts ?? hubData?.workouts ?? []),
       ...(hubData?.completed_training_logs ?? hubData?.logs ?? []),
+      // GPS / free workouts — Hub may return these under several different field names
+      ...(hubData?.free_activities ?? []),
+      ...(hubData?.activities ?? []),
+      ...(hubData?.training_activities ?? []),
+      ...(hubData?.gps_activities ?? []),
     ];
+    // Deduplicate by id so the same workout isn't shown twice if Hub sends it in multiple arrays
+    const seen = new Set<string>();
     for (const day of all) {
       const key = day.scheduled_date ?? day.date;
       if (!key) continue;
+      const uid = day.id ?? `${key}-${day.title ?? day.session_type ?? ''}`;
+      if (seen.has(uid)) continue;
+      seen.add(uid);
       if (!map[key]) map[key] = [];
       map[key].push(day);
     }
@@ -241,7 +255,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
     return days;
   };
 
-  const loading = localLoading || hubLoading;
+  const loading = localLoading || hubLoading || enduranceLoading;
   const hasLocal = sessions.length > 0;
   const hasHub = Object.keys(hubDaysByDate).length > 0;
   const hubConnected = hubTarget && !hubError;
@@ -759,6 +773,64 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
           </div>
         </>
       )}
+
+      {/* Endurance / GPS activities from Hub */}
+      {(() => {
+        const acts = [
+          ...(enduranceData?.activities ?? enduranceData?.recent_activities ?? enduranceData?.training_logs ?? []),
+        ].filter((a) => a.validated !== false).slice(0, 6);
+        if (!hubTarget || acts.length === 0) return null;
+        return (
+          <div className="pt-2 border-t" style={{ borderColor: '#f3f4f6' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: '#ef4444' }} />
+              <span className="font-body font-semibold text-xs" style={{ color: '#6b7280' }}>
+                Recent Endurance / GPS Activities
+              </span>
+            </div>
+            <div className="space-y-2">
+              {acts.map((act, idx) => {
+                const dur = act.duration_min ?? act.duration_minutes;
+                const sportCfg = TYPE_CONFIG[act.sport?.toLowerCase() ?? act.activity_type?.toLowerCase() ?? 'other'] ?? TYPE_CONFIG.other;
+                return (
+                  <div key={act.id ?? idx} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sportCfg.bg }}>
+                      <Activity className="w-3.5 h-3.5" style={{ color: sportCfg.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-body font-semibold text-xs truncate" style={{ color: '#1f2937' }}>
+                        {act.title ?? act.activity_type ?? act.sport ?? 'Activity'}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {act.date && (
+                          <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+                            {new Date(act.date + 'T12:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                        {dur != null && (
+                          <span className="text-[10px]" style={{ color: '#9ca3af' }}>{formatDuration(dur)}</span>
+                        )}
+                        {act.distance_km != null && (
+                          <span className="text-[10px] font-semibold" style={{ color: '#3b82f6' }}>{act.distance_km.toFixed(1)} km</span>
+                        )}
+                        {act.avg_hr != null && (
+                          <span className="text-[10px]" style={{ color: '#9ca3af' }}>♥ {act.avg_hr}</span>
+                        )}
+                      </div>
+                    </div>
+                    {act.tss != null && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#fef3c7', color: '#b45309' }}>
+                        TSS {act.tss}
+                      </span>
+                    )}
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#eff6ff', color: '#2563eb' }}>GPS</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

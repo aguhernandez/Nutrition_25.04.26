@@ -32,11 +32,11 @@ function MacroBadge({ label, value, unit, color }: { label: string; value?: numb
 export default function HubFoodDiary({ athleteEmail, athleteName }: Props) {
   const today = new Date();
   const dateTo = today.toISOString().slice(0, 10);
-  const dateFrom = new Date(today.getTime() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [days7, setDays7] = useState(7);
+  const dateFrom = new Date(today.getTime() - days7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const { data, loading, error, refetch } = useHubFoodDiary(athleteEmail, dateFrom, dateTo);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
-
   const days = Object.keys(data?.totals_by_day ?? {}).sort((a, b) => b.localeCompare(a));
 
   const entriesByDay: Record<string, typeof data.entries> = {};
@@ -75,8 +75,20 @@ export default function HubFoodDiary({ athleteEmail, athleteName }: Props) {
           <UtensilsCrossed className="w-4 h-4" style={{ color: '#d97706' }} />
         </div>
         <span className="font-heading text-sm" style={{ color: '#1f2937' }}>
-          Diario alimentario · Hub (48h)
+          Diario alimentario · Hub
         </span>
+        <div className="flex items-center gap-1 ml-2 p-0.5 rounded-lg" style={{ backgroundColor: '#f3f4f6' }}>
+          {[3, 7, 14].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays7(d)}
+              className="px-2 py-0.5 rounded-md text-xs font-body font-medium transition-all"
+              style={days7 === d ? { backgroundColor: '#fdda36', color: '#514163' } : { color: '#9ca3af' }}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
         <button
           onClick={refetch}
           className="ml-auto p-1.5 rounded-lg transition-colors hover:bg-gray-100"
@@ -106,7 +118,7 @@ export default function HubFoodDiary({ athleteEmail, athleteName }: Props) {
         <div className="text-center py-8">
           <UtensilsCrossed className="w-8 h-8 mx-auto mb-2" style={{ color: '#d1d5db' }} />
           <p className="text-sm" style={{ color: '#9ca3af' }}>
-            {athleteName ?? 'El atleta'} no tiene registros en el Hub para los últimos 2 días
+            {athleteName ?? 'El atleta'} no tiene registros en el Hub para los últimos {days7} días
           </p>
         </div>
       )}
