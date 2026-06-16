@@ -1,5 +1,5 @@
 import { Scale, Ruler, Percent, Heart, TrendingDown, TrendingUp, RefreshCw, Wifi, WifiOff, Activity } from 'lucide-react';
-import { useHubAnthropometry } from '../../hooks/useHubData';
+import { useHubBiologicalPassport } from '../../hooks/useHubData';
 
 interface Props {
   athleteEmail: string;
@@ -114,7 +114,7 @@ function KerrTrendChart({ history }: { history: Array<{ date: string; sum_skinfo
 }
 
 export default function HubBiologicalPassport({ athleteEmail, athleteName }: Props) {
-  const { data, loading, error, refetch } = useHubAnthropometry(athleteEmail);
+  const { data, loading, error, refetch } = useHubBiologicalPassport(athleteEmail);
 
   if (loading) {
     return (

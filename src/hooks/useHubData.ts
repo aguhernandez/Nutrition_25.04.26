@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   getAnthropometry,
+  getBiologicalPassport,
   getTrainingSchedule,
   getFoodDiary,
   getAthleteProfile,
+  getNutritionAnamnesis,
   getAthleteHabits,
   getWellness,
   getEnduranceData,
@@ -12,6 +14,7 @@ import {
   type HubTrainingSchedule,
   type HubFoodDiary,
   type HubAthleteProfile,
+  type HubNutritionAnamnesis,
   type HubAthleteHabits,
   type HubWellness,
   type HubEnduranceData,
@@ -36,6 +39,88 @@ export function useHubAnthropometry(athleteEmailOrId: string | null | undefined)
     setError(null);
     try {
       const result = await getAnthropometry(id);
+      setData(result);
+      fetchedRef.current = id;
+    } catch (err) {
+      fetchedRef.current = null;
+      if (err instanceof HubApiError) {
+        setError(err.message);
+      } else {
+        setError('Error connecting to Hub');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!athleteEmailOrId) return;
+    doFetch(athleteEmailOrId);
+  }, [athleteEmailOrId, doFetch]);
+
+  const refetch = useCallback(() => {
+    if (!athleteEmailOrId) return;
+    fetchedRef.current = null;
+    doFetch(athleteEmailOrId, true);
+  }, [athleteEmailOrId, doFetch]);
+
+  return { data, loading, error, refetch };
+}
+
+// Fetches from the dedicated biological-passport endpoint (ISAK / Kerr data).
+// Reuses HubAnthropometry shape since the data structure is compatible.
+export function useHubBiologicalPassport(athleteEmailOrId: string | null | undefined) {
+  const [data, setData] = useState<HubAnthropometry | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef<string | null>(null);
+
+  const doFetch = useCallback(async (id: string, force = false) => {
+    if (!force && fetchedRef.current === id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getBiologicalPassport(id);
+      setData(result);
+      fetchedRef.current = id;
+    } catch (err) {
+      fetchedRef.current = null;
+      if (err instanceof HubApiError) {
+        setError(err.message);
+      } else {
+        setError('Error connecting to Hub');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!athleteEmailOrId) return;
+    doFetch(athleteEmailOrId);
+  }, [athleteEmailOrId, doFetch]);
+
+  const refetch = useCallback(() => {
+    if (!athleteEmailOrId) return;
+    fetchedRef.current = null;
+    doFetch(athleteEmailOrId, true);
+  }, [athleteEmailOrId, doFetch]);
+
+  return { data, loading, error, refetch };
+}
+
+export function useHubNutritionAnamnesis(athleteEmailOrId: string | null | undefined) {
+  const [data, setData] = useState<HubNutritionAnamnesis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef<string | null>(null);
+
+  const doFetch = useCallback(async (id: string, force = false) => {
+    if (!force && fetchedRef.current === id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getNutritionAnamnesis(id);
       setData(result);
       fetchedRef.current = id;
     } catch (err) {

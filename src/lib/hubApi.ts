@@ -293,9 +293,61 @@ export function getAthleteProfile(athleteEmailOrId: string): Promise<HubAthleteP
   );
 }
 
+export interface HubNutritionAnamnesis {
+  primary_sport?: string;
+  sport_primary?: string;
+  sport_secondary?: string;
+  weekly_training_hours?: number;
+  training_hours_per_week?: number;
+  dietary_pattern?: string;
+  diet_type?: string;
+  food_restrictions?: string[];
+  food_allergies?: string[];
+  intolerances?: string[];
+  meal_frequency?: number;
+  meals_per_day?: number;
+  supplements?: string[];
+  hydration_liters_daily?: number;
+  hydration_daily?: number;
+  sleep_hours?: number;
+  sleep_quality?: number;
+  target_weight_kg?: number;
+  goal_weight_kg?: number;
+  weight_goal?: string;
+  target_calories_kcal?: number;
+  target_kcal?: number;
+  target_protein_g?: number;
+  target_carbs_g?: number;
+  target_fat_g?: number;
+  created_at?: string;
+  updated_at?: string;
+  notes?: string;
+  coach_notes?: string;
+  [key: string]: unknown;
+}
+
+export function getNutritionAnamnesis(athleteEmailOrId: string): Promise<HubNutritionAnamnesis> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/nutrition-anamnesis?${athleteParam(athleteEmailOrId)}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubNutritionAnamnesis>(r))
+  );
+}
+
 export function getAnthropometry(athleteEmailOrId: string, limit = 5): Promise<HubAnthropometry> {
   return rateLimiter.execute(() =>
     fetch(`${PROXY_BASE}/anthropometry?${athleteParam(athleteEmailOrId)}&limit=${limit}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubAnthropometry>(r))
+  );
+}
+
+/** Calls the dedicated biological-passport endpoint (ISAK / Kerr data). */
+export function getBiologicalPassport(athleteEmailOrId: string): Promise<HubAnthropometry> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/biological-passport?${athleteParam(athleteEmailOrId)}`, {
       method: 'GET',
       headers: getProxyHeaders(),
     }).then((r) => handleResponse<HubAnthropometry>(r))
@@ -347,8 +399,72 @@ export function getFoodDiary(
     fetch(
       `${PROXY_BASE}/food-diary?${athleteParam(athleteEmailOrId)}&date_from=${dateFrom}&date_to=${dateTo}`,
       { method: 'GET', headers: getProxyHeaders() }
-    ).then((r) => handleResponse<HubFoodDiary>(r))
+    ).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      return normalizeFoodDiaryResponse(raw);
+    })
   );
+}
+
+function normalizeFoodDiaryResponse(raw: Record<string, unknown>): HubFoodDiary {
+  if (!raw || typeof raw !== 'object') return {};
+
+  // Already in expected shape
+  if (Array.isArray(raw.entries) || raw.totals_by_day) {
+    return raw as HubFoodDiary;
+  }
+
+  // Hub returns { diary_entries: [...] }
+  const rawEntries =
+    (raw.diary_entries as HubFoodDiaryEntry[] | undefined) ??
+    (raw.records as HubFoodDiaryEntry[] | undefined) ??
+    (raw.logs as HubFoodDiaryEntry[] | undefined);
+
+  if (rawEntries && Array.isArray(rawEntries)) {
+    const totals_by_day: HubFoodDiary['totals_by_day'] = {};
+    for (const e of rawEntries) {
+      const day = (e.date ?? '').slice(0, 10);
+      if (!day) continue;
+      if (!totals_by_day[day]) totals_by_day[day] = {};
+      const t = totals_by_day[day]!;
+      t.kcal = (t.kcal ?? 0) + (e.kcal ?? 0);
+      t.protein_g = (t.protein_g ?? 0) + (e.protein_g ?? 0);
+      t.carbs_g = (t.carbs_g ?? 0) + (e.carbs_g ?? 0);
+      t.fat_g = (t.fat_g ?? 0) + (e.fat_g ?? 0);
+    }
+    return { entries: rawEntries, totals_by_day };
+  }
+
+  // Hub returns nested by day: { days: { "2026-06-16": { entries: [...], totals: {...} } } }
+  const rawDays =
+    (raw.days as Record<string, unknown> | undefined) ??
+    (raw.diary as Record<string, unknown> | undefined);
+
+  if (rawDays && typeof rawDays === 'object') {
+    const entries: HubFoodDiaryEntry[] = [];
+    const totals_by_day: HubFoodDiary['totals_by_day'] = {};
+    for (const [day, dayData] of Object.entries(rawDays)) {
+      const d = dayData as Record<string, unknown>;
+      const dayEntries = (d.entries ?? d.items ?? d.records) as HubFoodDiaryEntry[] | undefined;
+      if (Array.isArray(dayEntries)) {
+        for (const e of dayEntries) {
+          entries.push({ ...e, date: e.date ?? day });
+        }
+      }
+      const t = (d.totals ?? d.summary ?? d.macros) as Record<string, number> | undefined;
+      if (t) {
+        totals_by_day[day] = {
+          kcal: t.kcal ?? t.calories,
+          protein_g: t.protein_g ?? t.protein,
+          carbs_g: t.carbs_g ?? t.carbs ?? t.carbohydrates,
+          fat_g: t.fat_g ?? t.fat,
+        };
+      }
+    }
+    return { entries, totals_by_day };
+  }
+
+  return {};
 }
 
 export interface HubHabit {
