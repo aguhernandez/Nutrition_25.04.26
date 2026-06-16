@@ -84,8 +84,6 @@ Deno.serve(async (req: Request) => {
       headers: {
         "Content-Type": "application/json",
         "X-Planner-Token": PLANNER_TOKEN,
-        // nutrition-satellite-bridge uses Authorization: Bearer instead of X-Planner-Token
-        ...(isBridgeEndpoint ? { "Authorization": `Bearer ${PLANNER_TOKEN}` } : {}),
       },
       body: body || undefined,
     });
