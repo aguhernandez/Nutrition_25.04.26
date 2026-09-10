@@ -5,8 +5,6 @@ import { usePreferences } from '../../lib/preferences';
 import { getAnamnesis, getDiaryRange } from '../../lib/nutritionService';
 import type { NutritionAnamnesis, DiaryEntry, Macros } from '../../types/nutritionModule';
 import type { NutritionTab } from './NutritionModule';
-import HubBiologicalPassport from './HubBiologicalPassport';
-import TrainingSneakPeek from '../views/TrainingSneakPeek';
 
 interface Props {
   onNavigate: (view: NutritionTab) => void;
@@ -82,15 +80,12 @@ function FuelDayBadge({ type, active }: { type: string; active: boolean }) {
 }
 
 export default function NutritionDashboard({ onNavigate }: Props) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const { language } = usePreferences();
   const [anamnesis, setAnamnesis] = useState<NutritionAnamnesis | null>(null);
   const [todayEntries, setTodayEntries] = useState<DiaryEntry[]>([]);
   const [weekEntries, setWeekEntries] = useState<DiaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const hubTarget = profile?.hub_user_id ?? user?.email ?? null;
-  const athleteId = profile?.id ?? user?.id ?? '';
 
   useEffect(() => {
     if (!user?.id || user.id.startsWith('demo-')) {
@@ -489,13 +484,6 @@ export default function NutritionDashboard({ onNavigate }: Props) {
         </div>
       )}
 
-      {/* Pasaporte Biologico + Training Zones + TDEE from Hub */}
-      {hubTarget && (
-        <>
-          <HubBiologicalPassport athleteEmail={hubTarget} athleteName={profile?.full_name} />
-          <TrainingSneakPeek athleteId={athleteId} athleteEmail={hubTarget} />
-        </>
-      )}
     </div>
   );
 }

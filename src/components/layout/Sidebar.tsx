@@ -16,6 +16,7 @@ import {
   Database,
   ChevronDown,
   ChevronRight,
+  Fingerprint,
 } from 'lucide-react';
 import type { UserRole } from '../../lib/auth';
 import { useAuth } from '../../lib/auth';
@@ -33,7 +34,8 @@ export type AppView =
   | 'nutrition-planner'
   | 'nutrition-menu-templates'
   | 'nutrition-supplements'
-  | 'nutrition-food-database';
+  | 'nutrition-food-database'
+  | 'passport';
 
 interface NavItem {
   view: AppView;
@@ -65,6 +67,7 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   { view: 'athletes', label_es: 'Atletas', label_en: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
+  { view: 'passport', label_es: 'Pasaporte Biológico', label_en: 'Biological Passport', icon: Fingerprint, roles: ['admin', 'coach', 'athlete'], separator: true },
   { view: 'reporting', label_es: 'Reportes', label_en: 'Reporting', icon: BarChart2, roles: ['admin', 'coach'] },
   { view: 'settings', label_es: 'Configuración', label_en: 'Settings', icon: Settings, roles: ['admin', 'coach', 'athlete'] },
 ];

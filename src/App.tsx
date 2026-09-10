@@ -9,6 +9,7 @@ import RacePlannerView from './components/race-planner/RacePlanner';
 import SavedRacesView from './components/race-planner/SavedRaces';
 import type { Competition } from './types/race';
 import AthletesView from './components/views/AthletesView';
+import BiologicalPassportView from './components/views/BiologicalPassportView';
 import ReportingView from './components/views/ReportingView';
 import SettingsView from './components/views/SettingsView';
 import NutritionModule from './components/nutrition/NutritionModule';
@@ -31,6 +32,7 @@ const VIEW_TITLES_ES: Record<AppView, string> = {
   'nutrition-menu-templates': 'Plantillas de Menú',
   'nutrition-supplements': 'Suplementos',
   'nutrition-food-database': 'Food Database',
+  'passport': 'Pasaporte Biológico',
 };
 
 const VIEW_TITLES_EN: Record<AppView, string> = {
@@ -46,6 +48,7 @@ const VIEW_TITLES_EN: Record<AppView, string> = {
   'nutrition-menu-templates': 'Menu Templates',
   'nutrition-supplements': 'Supplements',
   'nutrition-food-database': 'Food Database',
+  'passport': 'Biological Passport',
 };
 
 const VIEW_TO_TAB: Partial<Record<AppView, NutritionTab>> = {
@@ -166,6 +169,7 @@ function AppShell() {
           />
         )}
         {view === 'athletes' && <AthletesView />}
+        {view === 'passport' && <BiologicalPassportView />}
         {view === 'reporting' && <ReportingView />}
         {view === 'settings' && <SettingsView />}
       </main>
