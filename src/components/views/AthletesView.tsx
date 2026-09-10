@@ -293,7 +293,7 @@ function AthleteDetailView({ detail, onBack }: { detail: AthleteDetail; onBack: 
         </div>
       </div>
 
-      <TrainingSneakPeek key={`training-${hubPullKey}`} athleteId={athleteId} athleteEmail={profile.email} />
+      <TrainingSneakPeek key={`training-${hubPullKey}`} athleteId={athleteId} athleteEmail={profile.hub_user_id ?? profile.email} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <HubWellnessCard key={`wellness-${hubPullKey}`} athleteEmail={profile.email} athleteName={profile.full_name} />
