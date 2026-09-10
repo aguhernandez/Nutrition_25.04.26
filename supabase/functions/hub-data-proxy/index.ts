@@ -16,6 +16,9 @@ const BRIDGE_ENDPOINT_MAP: Record<string, string> = {
   "food-diary": "food-diary",
 };
 
+// Endpoints on planner-hub-api that require athlete_id (UUID) instead of athlete_email
+const RESOLVE_ID_ENDPOINTS = new Set(["tdee"]);
+
 const ALLOWED_ENDPOINTS = [
   "athlete-profile",
   "anthropometry",
@@ -30,6 +33,7 @@ const ALLOWED_ENDPOINTS = [
   "biological-passport",
   "nutrition-anamnesis",
   "coach-athletes",
+  "tdee",
 ];
 
 // Resolve athlete_email → athlete_id via the Hub's athlete-profile endpoint.
@@ -66,9 +70,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const isBridge = endpoint in BRIDGE_ENDPOINT_MAP;
+    const needsIdResolve = isBridge || RESOLVE_ID_ENDPOINTS.has(endpoint);
 
-    // For bridge endpoints: resolve athlete_email → athlete_id
-    if (isBridge && url.searchParams.has("athlete_email") && !url.searchParams.has("athlete_id")) {
+    // For bridge/tdee endpoints: resolve athlete_email → athlete_id
+    if (needsIdResolve && url.searchParams.has("athlete_email") && !url.searchParams.has("athlete_id")) {
       const email = url.searchParams.get("athlete_email")!;
       const athleteId = await resolveAthleteId(email);
       if (!athleteId) {

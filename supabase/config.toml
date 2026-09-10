@@ -1,0 +1,8 @@
+[functions.hub-data-proxy]
+verify_jwt = false
+
+[functions.hub-auth-proxy]
+verify_jwt = false
+
+[functions.usda-proxy]
+verify_jwt = false

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useHubTrainingSchedule, useHubEnduranceData, useHubBiologicalPassport } from '../../hooks/useHubData';
+import { useHubTrainingSchedule, useHubEnduranceData, useHubTdee } from '../../hooks/useHubData';
 import type { HubTrainingDay } from '../../lib/hubApi';
 
 interface TrainingSession {
@@ -153,7 +153,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   const enduranceDateFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
   const enduranceDateTo = new Date().toISOString().slice(0, 10);
   const { data: enduranceData, loading: enduranceLoading } = useHubEnduranceData(hubTarget, enduranceDateFrom, enduranceDateTo);
-  const { data: passportData } = useHubBiologicalPassport(hubTarget);
+  const { data: tdeeData } = useHubTdee(hubTarget);
 
   useEffect(() => {
     if (!athleteId || athleteId.startsWith('demo-')) {
@@ -258,9 +258,17 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
 
   const loading = localLoading || hubLoading || enduranceLoading;
 
-  const tdeeValue = passportData?.tdee ?? passportData?.tdee_kcal ?? passportData?.daily_caloric_need ?? passportData?.daily_caloric_need_kcal;
-  const bmrValue = passportData?.bmr ?? passportData?.bmr_kcal ?? passportData?.tdee_breakdown?.bmr;
-  const factorValue = passportData?.activity_factor ?? passportData?.tdee_breakdown?.activity_factor;
+  const tdeeWs = tdeeData?.weekly_summary;
+  const tdeeAvg = tdeeWs?.avg_tdee;
+  const tdeeLow = tdeeWs?.avg_tdee_low;
+  const tdeeHigh = tdeeWs?.avg_tdee_high;
+  const tdeeBmr = tdeeData?.bmr;
+  const tdeeNeatFactor = tdeeData?.neat_factor;
+  const tdeeTotalEat = tdeeWs?.total_eat;
+  const tdeeTrainingDays = tdeeWs?.training_days;
+  const tdeeRestDays = tdeeWs?.rest_days;
+  const hasTdee = tdeeAvg != null || (tdeeData?.daily && tdeeData.daily.length > 0);
+
   const hasLocal = sessions.length > 0;
   const hasHub = Object.keys(hubDaysByDate).length > 0;
   const hubConnected = hubTarget && !hubError;
@@ -837,48 +845,143 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
         );
       })()}
 
-      {/* Daily caloric need (TDEE) from biological passport */}
-      {tdeeValue != null && (
+      {/* Daily caloric need (TDEE) */}
+      {hasTdee && (
         <div className="pt-2 border-t" style={{ borderColor: '#f3f4f6' }}>
           <div className="flex items-center gap-2 mb-3">
             <Flame className="w-4 h-4 flex-shrink-0" style={{ color: '#f97316' }} />
             <span className="font-body font-semibold text-xs" style={{ color: '#6b7280' }}>
               Daily caloric need (TDEE)
             </span>
+            {tdeeData?.bmr_method && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full capitalize" style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}>
+                {tdeeData.bmr_method.replace(/_/g, ' ')}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
-              <Flame className="w-4 h-4" style={{ color: '#f97316' }} />
-              <div>
-                <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
-                  {Math.round(Number(tdeeValue))}
-                </span>
-                <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>kcal/d</span>
+            {tdeeAvg != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <Flame className="w-4 h-4" style={{ color: '#f97316' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {Math.round(tdeeAvg)}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>avg kcal/d</span>
+                </div>
               </div>
-            </div>
-            {bmrValue != null && (
+            )}
+            {tdeeLow != null && tdeeHigh != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <Activity className="w-4 h-4" style={{ color: '#fb923c' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {Math.round(tdeeLow)}–{Math.round(tdeeHigh)}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>range kcal/d</span>
+                </div>
+              </div>
+            )}
+            {tdeeBmr != null && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
                 <Activity className="w-4 h-4" style={{ color: '#f59e0b' }} />
                 <div>
                   <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
-                    {Math.round(Number(bmrValue))}
+                    {Math.round(tdeeBmr)}
                   </span>
                   <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>BMR kcal/d</span>
                 </div>
               </div>
             )}
-            {factorValue != null && (
+            {tdeeNeatFactor != null && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
                 <Zap className="w-4 h-4" style={{ color: '#3b82f6' }} />
                 <div>
                   <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
-                    {Number(factorValue).toFixed(2)}
+                    {Number(tdeeNeatFactor).toFixed(2)}
                   </span>
-                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>activity factor</span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>NEAT factor</span>
+                </div>
+              </div>
+            )}
+            {tdeeTotalEat != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <Activity className="w-4 h-4" style={{ color: '#10b981' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {Math.round(tdeeTotalEat)}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>EAT kcal/wk</span>
+                </div>
+              </div>
+            )}
+            {tdeeTrainingDays != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
+                <Activity className="w-4 h-4" style={{ color: '#2563eb' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {tdeeTrainingDays}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>train days</span>
+                </div>
+              </div>
+            )}
+            {tdeeRestDays != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f3f4f6', border: '1px solid #e5e7eb' }}>
+                <Activity className="w-4 h-4" style={{ color: '#6b7280' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {tdeeRestDays}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>rest days</span>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Daily breakdown */}
+          {tdeeData?.daily && tdeeData.daily.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {tdeeData.daily.map((day) => {
+                const dayDate = new Date(day.date + 'T12:00:00');
+                const dayLabel = dayDate.toLocaleDateString('en', { weekday: 'short', day: 'numeric', month: 'short' });
+                const hasSessions = day.sessions && day.sessions.length > 0;
+                return (
+                  <div key={day.date} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                    <span className="text-xs font-body font-medium flex-shrink-0" style={{ color: '#6b7280', minWidth: '5rem' }}>
+                      {dayLabel}
+                    </span>
+                    <div className="flex items-center gap-2 flex-1">
+                      <Flame className="w-3 h-3 flex-shrink-0" style={{ color: '#f97316' }} />
+                      <span className="text-xs font-body font-semibold" style={{ color: '#1f2937' }}>
+                        {Math.round(day.tdee)}
+                      </span>
+                      <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+                        ({Math.round(day.tdee_low)}–{Math.round(day.tdee_high)})
+                      </span>
+                      {day.eat > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>
+                          EAT {Math.round(day.eat)}
+                        </span>
+                      )}
+                    </div>
+                    {hasSessions && (
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        {day.sessions.map((sess, si) => (
+                          <span key={si} className="text-[10px] px-1.5 py-0.5 rounded-full" style={{
+                            backgroundColor: sess.source === 'gym' ? '#f5f3ff' : '#eff6ff',
+                            color: sess.source === 'gym' ? '#7c3aed' : '#2563eb',
+                          }} title={`${sess.name} • ${sess.duration_minutes}min • ${Math.round(sess.kcal)} kcal`}>
+                            {sess.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

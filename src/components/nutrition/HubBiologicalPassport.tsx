@@ -1,5 +1,6 @@
 import { Scale, Ruler, Percent, Heart, RefreshCw, Wifi, WifiOff, Activity, Zap, Wind, Flame } from 'lucide-react';
-import { useHubBiologicalPassport } from '../../hooks/useHubData';
+import { useHubBiologicalPassport, useHubTdee } from '../../hooks/useHubData';
+import type { HubTdeeData } from '../../lib/hubApi';
 
 interface Props {
   athleteEmail: string;
@@ -37,8 +38,93 @@ function StatCard({
   );
 }
 
+function TdeeSection({ tdeeData }: { tdeeData: HubTdeeData | null }) {
+  if (!tdeeData || !tdeeData.daily || tdeeData.daily.length === 0) return null;
+  const ws = tdeeData.weekly_summary;
+  const avgTdee = ws?.avg_tdee;
+  const avgLow = ws?.avg_tdee_low;
+  const avgHigh = ws?.avg_tdee_high;
+  const bmr = tdeeData.bmr;
+  const neatFactor = tdeeData.neat_factor;
+  const neatBase = tdeeData.neat_base;
+  const totalEat = ws?.total_eat;
+  const trainingDays = ws?.training_days;
+  const restDays = ws?.rest_days;
+  const bmrMethod = tdeeData.bmr_method;
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#6b7280' }}>
+          Daily caloric need (TDEE)
+        </p>
+        {bmrMethod && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full capitalize" style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}>
+            {bmrMethod.replace(/_/g, ' ')}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        <StatCard label="Avg TDEE" value={avgTdee != null ? Math.round(avgTdee) : null} unit="kcal/d" color="#f97316" icon={Flame} />
+        <StatCard label="TDEE range" value={avgLow != null && avgHigh != null ? `${Math.round(avgLow)}–${Math.round(avgHigh)}` : null} unit="kcal/d" color="#fb923c" icon={Activity} />
+        <StatCard label="BMR" value={bmr != null ? Math.round(bmr) : null} unit="kcal/d" color="#f59e0b" icon={Activity} />
+        <StatCard label="NEAT base" value={neatBase != null ? Math.round(neatBase) : null} unit="kcal/d" color="#eab308" icon={Zap} />
+        <StatCard label="NEAT factor" value={neatFactor != null ? Number(neatFactor).toFixed(2) : null} color="#3b82f6" icon={Zap} />
+        <StatCard label="Total EAT" value={totalEat != null ? Math.round(totalEat) : null} unit="kcal/wk" color="#10b981" icon={Activity} />
+        <StatCard label="Training days" value={trainingDays} color="#2563eb" icon={Activity} />
+        <StatCard label="Rest days" value={restDays} color="#6b7280" icon={Activity} />
+      </div>
+
+      {/* Daily breakdown */}
+      {tdeeData.daily.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {tdeeData.daily.map((day) => {
+            const dayDate = new Date(day.date + 'T12:00:00');
+            const dayLabel = dayDate.toLocaleDateString('es', { weekday: 'short', day: 'numeric', month: 'short' });
+            const hasSessions = day.sessions && day.sessions.length > 0;
+            return (
+              <div key={day.date} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                <span className="text-xs font-body font-medium flex-shrink-0" style={{ color: '#6b7280', minWidth: '5rem' }}>
+                  {dayLabel}
+                </span>
+                <div className="flex items-center gap-2 flex-1">
+                  <Flame className="w-3 h-3 flex-shrink-0" style={{ color: '#f97316' }} />
+                  <span className="text-xs font-body font-semibold" style={{ color: '#1f2937' }}>
+                    {Math.round(day.tdee)}
+                  </span>
+                  <span className="text-[10px]" style={{ color: '#9ca3af' }}>
+                    ({Math.round(day.tdee_low)}–{Math.round(day.tdee_high)})
+                  </span>
+                  {day.eat > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>
+                      EAT {Math.round(day.eat)}
+                    </span>
+                  )}
+                </div>
+                {hasSessions && (
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {day.sessions.map((sess, si) => (
+                      <span key={si} className="text-[10px] px-1.5 py-0.5 rounded-full" style={{
+                        backgroundColor: sess.source === 'gym' ? '#f5f3ff' : '#eff6ff',
+                        color: sess.source === 'gym' ? '#7c3aed' : '#2563eb',
+                      }} title={`${sess.name} • ${sess.duration_minutes}min • ${Math.round(sess.kcal)} kcal`}>
+                        {sess.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function HubBiologicalPassport({ athleteEmail, athleteName }: Props) {
   const { data, loading, error, refetch } = useHubBiologicalPassport(athleteEmail);
+  const { data: tdeeData } = useHubTdee(athleteEmail);
 
   const header = (
     <div className="flex items-center gap-2 mb-4">
@@ -177,24 +263,7 @@ export default function HubBiologicalPassport({ athleteEmail, athleteName }: Pro
       )}
 
       {/* Daily caloric need (TDEE) */}
-      {(() => {
-        const tdee = data.tdee ?? data.tdee_kcal ?? data.daily_caloric_need ?? data.daily_caloric_need_kcal;
-        const bmr = data.bmr ?? data.bmr_kcal ?? data.tdee_breakdown?.bmr;
-        const factor = data.activity_factor ?? data.tdee_breakdown?.activity_factor;
-        if (tdee == null && bmr == null) return null;
-        return (
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>
-              Daily caloric need (TDEE)
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              <StatCard label="TDEE" value={tdee != null ? Math.round(Number(tdee)) : null} unit="kcal/d" color="#f97316" icon={Flame} />
-              <StatCard label="BMR" value={bmr != null ? Math.round(Number(bmr)) : null} unit="kcal/d" color="#f59e0b" icon={Activity} />
-              <StatCard label="Activity factor" value={factor != null ? Number(factor).toFixed(2) : null} color="#3b82f6" icon={Zap} />
-            </div>
-          </div>
-        );
-      })()}
+      <TdeeSection tdeeData={tdeeData} />
 
       {data.notes && (
         <div className="mt-4 rounded-xl px-3 py-2" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>

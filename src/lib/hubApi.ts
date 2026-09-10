@@ -426,20 +426,6 @@ export interface HubBiologicalPassportData {
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
-  // Daily caloric need (TDEE)
-  tdee?: number | null;
-  tdee_kcal?: number | null;
-  daily_caloric_need?: number | null;
-  daily_caloric_need_kcal?: number | null;
-  bmr?: number | null;
-  bmr_kcal?: number | null;
-  activity_factor?: number | null;
-  tdee_breakdown?: {
-    bmr?: number;
-    activity_factor?: number;
-    tdee?: number;
-    notes?: string;
-  } | null;
   [key: string]: unknown;
 }
 
@@ -456,6 +442,80 @@ export function getBiologicalPassport(athleteEmailOrId: string): Promise<HubBiol
         return raw.biological_passport as HubBiologicalPassportData;
       }
       return raw as HubBiologicalPassportData;
+    })
+  );
+}
+
+export interface HubTdeeZoneBreakdown {
+  zone: string;
+  hours: number;
+  kcal: number;
+}
+
+export interface HubTdeeSession {
+  name: string;
+  source: 'endurance' | 'gym' | string;
+  kcal: number;
+  duration_minutes: number;
+  zone_breakdown?: HubTdeeZoneBreakdown[];
+}
+
+export interface HubTdeeDailyEntry {
+  date: string;
+  bmr: number;
+  neat_base: number;
+  eat: number;
+  tdee: number;
+  tdee_low: number;
+  tdee_high: number;
+  sessions: HubTdeeSession[];
+}
+
+export interface HubTdeeWeeklySummary {
+  avg_tdee: number;
+  avg_tdee_low: number;
+  avg_tdee_high: number;
+  total_eat: number;
+  training_days: number;
+  rest_days: number;
+}
+
+export interface HubTdeeData {
+  bmr: number;
+  bmr_method: 'cunningham' | 'mifflin_st_jeor' | string;
+  neat_factor: number;
+  neat_base: number;
+  met_endurance_default: number;
+  met_gym_default: number;
+  zone_scheme: '5_zones' | '7_zones' | string;
+  ffm_kg_used: boolean;
+  daily: HubTdeeDailyEntry[];
+  weekly_summary: HubTdeeWeeklySummary;
+}
+
+export interface HubTdeeResponse {
+  athlete_id?: string;
+  date_from?: string;
+  date_to?: string;
+  tdee?: HubTdeeData;
+}
+
+export function getTdee(
+  athleteEmailOrId: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<HubTdeeData | null> {
+  const dateParams = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : '';
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/tdee?${athleteParam(athleteEmailOrId)}${dateParams}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      if (raw && typeof raw === 'object' && 'tdee' in raw && raw.tdee && typeof raw.tdee === 'object') {
+        return raw.tdee as HubTdeeData;
+      }
+      return (raw as HubTdeeData) ?? null;
     })
   );
 }

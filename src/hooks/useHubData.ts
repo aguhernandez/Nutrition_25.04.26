@@ -9,6 +9,7 @@ import {
   getAthleteHabits,
   getWellness,
   getEnduranceData,
+  getTdee,
   HubApiError,
   type HubAnthropometry,
   type HubBiologicalPassportData,
@@ -19,6 +20,7 @@ import {
   type HubAthleteHabits,
   type HubWellness,
   type HubEnduranceData,
+  type HubTdeeData,
 } from '../lib/hubApi';
 
 interface UseHubAnthropometryResult {
@@ -401,7 +403,6 @@ export function useHubEnduranceData(
   return { data, loading, error, refetch };
 }
 
-
 interface UseHubWellnessResult {
   data: HubWellness | null;
   loading: boolean;
@@ -427,6 +428,59 @@ export function useHubWellness(
     setError(null);
     try {
       const result = await getWellness(id, dateFrom, dateTo);
+      setData(result);
+      fetchedRef.current = key;
+    } catch (err) {
+      fetchedRef.current = null;
+      if (err instanceof HubApiError) {
+        setError(err.message);
+      } else {
+        setError('Error connecting to Hub');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!athleteEmailOrId) return;
+    doFetch(athleteEmailOrId, cacheKey);
+  }, [athleteEmailOrId, cacheKey, doFetch]);
+
+  const refetch = useCallback(() => {
+    if (!athleteEmailOrId) return;
+    fetchedRef.current = null;
+    doFetch(athleteEmailOrId, cacheKey, true);
+  }, [athleteEmailOrId, cacheKey, doFetch]);
+
+  return { data, loading, error, refetch };
+}
+
+interface UseHubTdeeResult {
+  data: HubTdeeData | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
+
+export function useHubTdee(
+  athleteEmailOrId: string | null | undefined,
+  dateFrom?: string,
+  dateTo?: string
+): UseHubTdeeResult {
+  const [data, setData] = useState<HubTdeeData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cacheKey = `${athleteEmailOrId}|${dateFrom ?? ''}|${dateTo ?? ''}`;
+  const fetchedRef = useRef<string | null>(null);
+
+  const doFetch = useCallback(async (id: string, key: string, force = false) => {
+    if (!force && fetchedRef.current === key) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getTdee(id, dateFrom, dateTo);
       setData(result);
       fetchedRef.current = key;
     } catch (err) {
