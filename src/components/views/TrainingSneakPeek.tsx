@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useHubTrainingSchedule, useHubEnduranceData } from '../../hooks/useHubData';
+import { useHubTrainingSchedule, useHubEnduranceData, useHubBiologicalPassport } from '../../hooks/useHubData';
 import type { HubTrainingDay } from '../../lib/hubApi';
 
 interface TrainingSession {
@@ -153,6 +153,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   const enduranceDateFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
   const enduranceDateTo = new Date().toISOString().slice(0, 10);
   const { data: enduranceData, loading: enduranceLoading } = useHubEnduranceData(hubTarget, enduranceDateFrom, enduranceDateTo);
+  const { data: passportData } = useHubBiologicalPassport(hubTarget);
 
   useEffect(() => {
     if (!athleteId || athleteId.startsWith('demo-')) {
@@ -256,6 +257,10 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   };
 
   const loading = localLoading || hubLoading || enduranceLoading;
+
+  const tdeeValue = passportData?.tdee ?? passportData?.tdee_kcal ?? passportData?.daily_caloric_need ?? passportData?.daily_caloric_need_kcal;
+  const bmrValue = passportData?.bmr ?? passportData?.bmr_kcal ?? passportData?.tdee_breakdown?.bmr;
+  const factorValue = passportData?.activity_factor ?? passportData?.tdee_breakdown?.activity_factor;
   const hasLocal = sessions.length > 0;
   const hasHub = Object.keys(hubDaysByDate).length > 0;
   const hubConnected = hubTarget && !hubError;
@@ -831,6 +836,51 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
           </div>
         );
       })()}
+
+      {/* Daily caloric need (TDEE) from biological passport */}
+      {tdeeValue != null && (
+        <div className="pt-2 border-t" style={{ borderColor: '#f3f4f6' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Flame className="w-4 h-4 flex-shrink-0" style={{ color: '#f97316' }} />
+            <span className="font-body font-semibold text-xs" style={{ color: '#6b7280' }}>
+              Daily caloric need (TDEE)
+            </span>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#fff7ed', border: '1px solid #fed7aa' }}>
+              <Flame className="w-4 h-4" style={{ color: '#f97316' }} />
+              <div>
+                <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                  {Math.round(Number(tdeeValue))}
+                </span>
+                <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>kcal/d</span>
+              </div>
+            </div>
+            {bmrValue != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                <Activity className="w-4 h-4" style={{ color: '#f59e0b' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {Math.round(Number(bmrValue))}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>BMR kcal/d</span>
+                </div>
+              </div>
+            )}
+            {factorValue != null && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: '#eff6ff', border: '1px solid #dbeafe' }}>
+                <Zap className="w-4 h-4" style={{ color: '#3b82f6' }} />
+                <div>
+                  <span className="font-body font-bold text-sm" style={{ color: '#1f2937' }}>
+                    {Number(factorValue).toFixed(2)}
+                  </span>
+                  <span className="text-xs ml-0.5" style={{ color: '#9ca3af' }}>activity factor</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

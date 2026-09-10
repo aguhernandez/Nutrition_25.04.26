@@ -426,6 +426,20 @@ export interface HubBiologicalPassportData {
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
+  // Daily caloric need (TDEE)
+  tdee?: number | null;
+  tdee_kcal?: number | null;
+  daily_caloric_need?: number | null;
+  daily_caloric_need_kcal?: number | null;
+  bmr?: number | null;
+  bmr_kcal?: number | null;
+  activity_factor?: number | null;
+  tdee_breakdown?: {
+    bmr?: number;
+    activity_factor?: number;
+    tdee?: number;
+    notes?: string;
+  } | null;
   [key: string]: unknown;
 }
 

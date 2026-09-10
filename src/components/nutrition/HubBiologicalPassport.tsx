@@ -1,4 +1,4 @@
-import { Scale, Ruler, Percent, Heart, RefreshCw, Wifi, WifiOff, Activity, Zap, Wind } from 'lucide-react';
+import { Scale, Ruler, Percent, Heart, RefreshCw, Wifi, WifiOff, Activity, Zap, Wind, Flame } from 'lucide-react';
 import { useHubBiologicalPassport } from '../../hooks/useHubData';
 
 interface Props {
@@ -175,6 +175,26 @@ export default function HubBiologicalPassport({ athleteEmail, athleteName }: Pro
           </div>
         </div>
       )}
+
+      {/* Daily caloric need (TDEE) */}
+      {(() => {
+        const tdee = data.tdee ?? data.tdee_kcal ?? data.daily_caloric_need ?? data.daily_caloric_need_kcal;
+        const bmr = data.bmr ?? data.bmr_kcal ?? data.tdee_breakdown?.bmr;
+        const factor = data.activity_factor ?? data.tdee_breakdown?.activity_factor;
+        if (tdee == null && bmr == null) return null;
+        return (
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>
+              Daily caloric need (TDEE)
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              <StatCard label="TDEE" value={tdee != null ? Math.round(Number(tdee)) : null} unit="kcal/d" color="#f97316" icon={Flame} />
+              <StatCard label="BMR" value={bmr != null ? Math.round(Number(bmr)) : null} unit="kcal/d" color="#f59e0b" icon={Activity} />
+              <StatCard label="Activity factor" value={factor != null ? Number(factor).toFixed(2) : null} color="#3b82f6" icon={Zap} />
+            </div>
+          </div>
+        );
+      })()}
 
       {data.notes && (
         <div className="mt-4 rounded-xl px-3 py-2" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
