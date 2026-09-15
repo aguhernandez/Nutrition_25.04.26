@@ -5,7 +5,6 @@ import { supabase } from './supabase';
 
 export type UserRole = 'admin' | 'coach' | 'athlete';
 
-const SATELLITE_ALLOWED_ROLES = new Set(['nutritionist', 'head_coach']);
 export type { MembershipSlug };
 
 export interface UserProfile {

@@ -57,8 +57,14 @@ export interface LoginResult {
 }
 
 const ALLOWED_SATELLITE_ROLES = new Set(['nutritionist', 'head_coach']);
-const BLOCKED_MESSAGE_ES = 'Este satélite es solo para Nutricionistas y Head Coaches';
-const BLOCKED_MESSAGE_EN = 'This satellite is only for Nutritionists and Head Coaches';
+const BLOCKED_MESSAGE_ES = 'Este satélite es solo para Nutricionistas, Head Coaches y Atletas con membresía Pro';
+const BLOCKED_MESSAGE_EN = 'This satellite is only for Nutritionists, Head Coaches, and Pro Athletes';
+
+function isAccessAllowed(role: HubUser['role'], membershipSlug: MembershipSlug): boolean {
+  if (ALLOWED_SATELLITE_ROLES.has(role)) return true;
+  if (role === 'athlete' && membershipSlug === 'pro') return true;
+  return false;
+}
 
 export function useSatelliteAuth() {
   const [user, setUser] = useState<HubUser | null>(null);
@@ -111,8 +117,8 @@ export function useSatelliteAuth() {
       const hubUser = extractUserFromPayload(payload);
 
       if (hubUser) {
-        if (!ALLOWED_SATELLITE_ROLES.has(hubUser.role)) {
-          console.log('[Auth] Access denied for role:', hubUser.role);
+        if (!isAccessAllowed(hubUser.role, hubUser.membership_slug)) {
+          console.log('[Auth] Access denied for role:', hubUser.role, 'membership:', hubUser.membership_slug);
           setBlocked(true);
           setUser(null);
           return;
@@ -148,8 +154,9 @@ export function useSatelliteAuth() {
       const hubUser = data.user ?? (data.id ? data : null);
       if (hubUser?.id) {
         const proxyRole = (hubUser.role ?? 'athlete') as HubUser['role'];
-        if (!ALLOWED_SATELLITE_ROLES.has(proxyRole)) {
-          console.log('[Auth] Access denied via proxy for role:', proxyRole);
+        const proxyMembership = (hubUser.membership_slug ?? 'inicia') as MembershipSlug;
+        if (!isAccessAllowed(proxyRole, proxyMembership)) {
+          console.log('[Auth] Access denied via proxy for role:', proxyRole, 'membership:', proxyMembership);
           setBlocked(true);
           setUser(null);
           return;
@@ -161,7 +168,7 @@ export function useSatelliteAuth() {
           name: hubUser.name,
           role: proxyRole,
           active_plan: hubUser.active_plan,
-          membership_slug: hubUser.membership_slug ?? 'inicia',
+          membership_slug: proxyMembership,
           membership_name: hubUser.membership_name ?? 'Asciende Inicia',
         });
       } else {
@@ -198,7 +205,7 @@ export function useSatelliteAuth() {
       if (payload && !isTokenExpired(payload)) {
         const hubUser = extractUserFromPayload(payload);
         if (hubUser) {
-          if (!ALLOWED_SATELLITE_ROLES.has(hubUser.role)) {
+          if (!isAccessAllowed(hubUser.role, hubUser.membership_slug)) {
             return { success: false, error: BLOCKED_MESSAGE_ES };
           }
           setUser(hubUser);
