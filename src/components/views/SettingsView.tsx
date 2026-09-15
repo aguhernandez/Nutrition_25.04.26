@@ -16,7 +16,10 @@ export default function SettingsView() {
   const isDark = theme === 'dark';
 
   const PLANNER_TOKEN_KEY = 'hub_planner_token';
-  const [plannerToken, setPlannerToken] = useState(localStorage.getItem(PLANNER_TOKEN_KEY) ?? '');
+  const DEFAULT_TOKEN = 'planner_717ed201d73949a6b59b702a5d705958';
+  const storedOrDefault = localStorage.getItem(PLANNER_TOKEN_KEY) ?? DEFAULT_TOKEN;
+  if (!localStorage.getItem(PLANNER_TOKEN_KEY)) localStorage.setItem(PLANNER_TOKEN_KEY, DEFAULT_TOKEN);
+  const [plannerToken, setPlannerToken] = useState(storedOrDefault);
   const [plannerTokenVisible, setPlannerTokenVisible] = useState(false);
   const [plannerTokenSaved, setPlannerTokenSaved] = useState(false);
 
