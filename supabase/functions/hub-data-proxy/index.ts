@@ -1,6 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-// Force redeploy to update coach-athletes endpoint
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -9,7 +8,7 @@ const corsHeaders = {
 
 const HUB_API_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/planner-hub-api";
 const HUB_BRIDGE_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/nutrition-satellite-bridge";
-const PLANNER_TOKEN = Deno.env.get("HUB_PLANNER_TOKEN") ?? "";
+const PLANNER_TOKEN_DEFAULT = Deno.env.get("HUB_PLANNER_TOKEN") ?? "";
 
 const BRIDGE_ENDPOINT_MAP: Record<string, string> = {
   "biological-passport": "biological-passport",
@@ -63,6 +62,7 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const segments = url.pathname.split("/");
     const endpoint = segments[segments.length - 1];
+    const PLANNER_TOKEN = req.headers.get("X-Hub-Planner-Token") || PLANNER_TOKEN_DEFAULT;
 
     if (!ALLOWED_ENDPOINTS.includes(endpoint)) {
       return new Response(
