@@ -34,6 +34,7 @@ const ALLOWED_ENDPOINTS = [
   "nutrition-anamnesis",
   "coach-athletes",
   "tdee",
+  "activities",
 ];
 
 // Resolve athlete_email → athlete_id via the Hub's athlete-profile endpoint.
