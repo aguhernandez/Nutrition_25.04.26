@@ -125,7 +125,10 @@ function isSameDay(a: Date, b: Date) {
 }
 
 function dateKey(d: Date) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -773,8 +776,8 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
                 sessions.some(
                   (s) =>
                     s.type === type &&
-                    new Date(s.session_date).getMonth() === currentMonth.getMonth() &&
-                    new Date(s.session_date).getFullYear() === currentMonth.getFullYear()
+                    Number(s.session_date.slice(5, 7)) - 1 === currentMonth.getMonth() &&
+                    Number(s.session_date.slice(0, 4)) === currentMonth.getFullYear()
                 )
               )
               .map(([type, cfg]) => (
