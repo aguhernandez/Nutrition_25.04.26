@@ -198,6 +198,35 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
       if (typeof v !== 'string') return null;
       return v.replace(/T.*$/, '').slice(0, 10);
     };
+    const enduranceActs: HubTrainingDay[] = (
+      enduranceData?.activities ??
+      enduranceData?.recent_activities ??
+      enduranceData?.training_logs ??
+      []
+    )
+      .filter((a) => a.validated !== false)
+      .map((a) => ({
+        id: a.id,
+        date: a.date,
+        scheduled_date: a.date,
+        session_type: a.activity_type ?? a.sport ?? a.session_type ?? 'other',
+        title: a.title ?? a.activity_type ?? a.sport ?? 'Activity',
+        status: 'completed' as const,
+        estimated_duration_min: a.duration_min ?? a.duration_minutes,
+        distance_km: a.distance_km,
+        avg_hr: a.avg_hr,
+        max_hr: a.max_hr,
+        elevation_gain_m: a.elevation_gain_m,
+        calories_burned: a.calories_burned,
+        avg_pace_min_km: a.avg_pace_min_km,
+        avg_speed_kmh: a.avg_speed_kmh,
+        estimated_load: a.tss,
+        intensity_color: a.intensity_color,
+        intensity_label: a.intensity_label,
+        source: a.source ?? 'gps',
+        notes: a.notes,
+      }));
+
     const all = [
       ...(hubData?.scheduled_workouts ?? []),
       ...(hubData?.workouts ?? []),
@@ -207,6 +236,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
       ...(hubData?.activities ?? []),
       ...(hubData?.training_activities ?? []),
       ...(hubData?.gps_activities ?? []),
+      ...enduranceActs,
     ];
     const seen = new Set<string>();
     for (const day of all) {
