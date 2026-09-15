@@ -984,6 +984,72 @@ export function getEnduranceData(
   );
 }
 
+// ─── GPS / External Activities ────────────────────────────────────────────────
+
+export interface HubActivity {
+  id?: string;
+  source?: string;
+  external_id?: string;
+  sport_type?: string;
+  name?: string;
+  local_date?: string;
+  start_time?: string;
+  duration_seconds?: number;
+  elapsed_time_seconds?: number | null;
+  distance_meters?: number;
+  elevation_gain_meters?: number;
+  average_speed_mps?: number;
+  max_speed_mps?: number | null;
+  average_heartrate?: number | null;
+  max_heartrate?: number | null;
+  has_heartrate?: boolean;
+  average_power?: number | null;
+  weighted_avg_power?: number | null;
+  max_power?: number | null;
+  average_cadence?: number | null;
+  calories?: number | null;
+  kilojoules?: number | null;
+  map_polyline?: string | null;
+  map_summary_polyline?: string | null;
+  start_latlng?: [number, number] | null;
+  end_latlng?: [number, number] | null;
+  trainer?: boolean;
+  timezone?: string | null;
+  device_name?: string | null;
+  streams_available?: boolean;
+  splits?: unknown;
+  pace_data?: unknown;
+}
+
+export interface HubActivitiesData {
+  athlete_id?: string;
+  date_from?: string;
+  date_to?: string;
+  activities?: HubActivity[];
+  summary?: {
+    count?: number;
+    total_distance_meters?: number;
+    total_duration_seconds?: number;
+    with_map?: number;
+    with_heartrate?: number;
+    sources?: string[];
+  };
+}
+
+export function getHubActivities(
+  athleteEmailOrId: string,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<HubActivitiesData> {
+  const dateParams = dateFrom && dateTo ? `&date_from=${dateFrom}&date_to=${dateTo}` : '';
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/activities?${athleteParam(athleteEmailOrId)}${dateParams}`, {
+      method: 'GET',
+      headers: getProxyHeaders(),
+    }).then((r) => handleResponse<HubActivitiesData>(r))
+  );
+}
+
 // ─── Coach Athletes ──────────────────────────────────────────────────────────
 export interface HubCoachAthlete {
   id: string;

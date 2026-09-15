@@ -10,6 +10,7 @@ import {
   getWellness,
   getEnduranceData,
   getTdee,
+  getHubActivities,
   HubApiError,
   type HubAnthropometry,
   type HubBiologicalPassportData,
@@ -21,6 +22,7 @@ import {
   type HubWellness,
   type HubEnduranceData,
   type HubTdeeData,
+  type HubActivitiesData,
 } from '../lib/hubApi';
 
 interface UseHubAnthropometryResult {
@@ -375,6 +377,59 @@ export function useHubEnduranceData(
     setError(null);
     try {
       const result = await getEnduranceData(id, dateFrom, dateTo);
+      setData(result);
+      fetchedRef.current = key;
+    } catch (err) {
+      fetchedRef.current = null;
+      if (err instanceof HubApiError) {
+        setError(err.message);
+      } else {
+        setError('Error connecting to Hub');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!athleteEmailOrId) return;
+    doFetch(athleteEmailOrId, cacheKey);
+  }, [athleteEmailOrId, cacheKey, doFetch]);
+
+  const refetch = useCallback(() => {
+    if (!athleteEmailOrId) return;
+    fetchedRef.current = null;
+    doFetch(athleteEmailOrId, cacheKey, true);
+  }, [athleteEmailOrId, cacheKey, doFetch]);
+
+  return { data, loading, error, refetch };
+}
+
+interface UseHubActivitiesResult {
+  data: HubActivitiesData | null;
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+}
+
+export function useHubActivities(
+  athleteEmailOrId: string | null | undefined,
+  dateFrom?: string,
+  dateTo?: string
+): UseHubActivitiesResult {
+  const [data, setData] = useState<HubActivitiesData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cacheKey = `${athleteEmailOrId}|${dateFrom ?? ''}|${dateTo ?? ''}`;
+  const fetchedRef = useRef<string | null>(null);
+
+  const doFetch = useCallback(async (id: string, key: string, force = false) => {
+    if (!force && fetchedRef.current === key) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getHubActivities(id, dateFrom, dateTo);
       setData(result);
       fetchedRef.current = key;
     } catch (err) {

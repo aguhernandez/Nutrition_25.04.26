@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { useHubTrainingSchedule, useHubEnduranceData, useHubTdee } from '../../hooks/useHubData';
-import type { HubTrainingDay, HubEnduranceActivity } from '../../lib/hubApi';
+import { useHubTrainingSchedule, useHubEnduranceData, useHubTdee, useHubActivities } from '../../hooks/useHubData';
+import type { HubTrainingDay, HubEnduranceActivity, HubActivity } from '../../lib/hubApi';
 import SessionDetailModal, { type SessionInfo, type SessionPoint } from './SessionDetailModal';
 
 interface TrainingSession {
@@ -157,6 +157,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   const enduranceDateFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10); })();
   const enduranceDateTo = new Date().toISOString().slice(0, 10);
   const { data: enduranceData, loading: enduranceLoading } = useHubEnduranceData(hubTarget, enduranceDateFrom, enduranceDateTo);
+  const { data: activitiesData, loading: activitiesLoading } = useHubActivities(hubTarget, enduranceDateFrom, enduranceDateTo);
   const { data: tdeeData } = useHubTdee(hubTarget);
 
   useEffect(() => {
@@ -227,6 +228,25 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
         notes: a.notes,
       }));
 
+    const gpsActs: HubTrainingDay[] = (activitiesData?.activities ?? []).map((a: HubActivity) => ({
+      id: a.id,
+      date: a.local_date ?? a.start_time ?? '',
+      scheduled_date: a.local_date ?? a.start_time ?? '',
+      session_type: a.sport_type ?? 'other',
+      title: a.name ?? a.sport_type ?? 'Activity',
+      status: 'completed' as const,
+      estimated_duration_min: a.duration_seconds ? Math.round(a.duration_seconds / 60) : undefined,
+      distance_km: a.distance_meters != null ? a.distance_meters / 1000 : undefined,
+      avg_hr: a.average_heartrate ?? undefined,
+      max_hr: a.max_heartrate ?? undefined,
+      elevation_gain_m: a.elevation_gain_meters != null ? Math.round(a.elevation_gain_meters) : undefined,
+      calories_burned: a.calories ?? undefined,
+      avg_speed_kmh: a.average_speed_mps != null ? a.average_speed_mps * 3.6 : undefined,
+      intensity_color: 'green',
+      intensity_label: 'Completed',
+      source: a.source ?? 'gps',
+    }));
+
     const all = [
       ...(hubData?.scheduled_workouts ?? []),
       ...(hubData?.workouts ?? []),
@@ -237,6 +257,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
       ...(hubData?.training_activities ?? []),
       ...(hubData?.gps_activities ?? []),
       ...enduranceActs,
+      ...gpsActs,
     ];
     const seen = new Set<string>();
     for (const day of all) {
@@ -294,7 +315,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
     return days;
   };
 
-  const loading = localLoading || hubLoading || enduranceLoading;
+  const loading = localLoading || hubLoading || enduranceLoading || activitiesLoading;
 
   const tdeeWs = tdeeData?.weekly_summary;
   const tdeeAvg = tdeeWs?.avg_tdee;
@@ -808,9 +829,23 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
 
       {/* Endurance / GPS activities from Hub */}
       {(() => {
-        const acts = [
-          ...(enduranceData?.activities ?? enduranceData?.recent_activities ?? enduranceData?.training_logs ?? []),
-        ].filter((a) => a.validated !== false).slice(0, 6);
+        const enduranceActs: HubEnduranceActivity[] = (
+          enduranceData?.activities ?? enduranceData?.recent_activities ?? enduranceData?.training_logs ?? []
+        ).filter((a) => a.validated !== false);
+        const gpsActs: HubEnduranceActivity[] = (activitiesData?.activities ?? []).map((a: HubActivity) => ({
+          id: a.id,
+          date: a.local_date ?? a.start_time ?? '',
+          activity_type: a.sport_type ?? 'other',
+          title: a.name ?? a.sport_type ?? 'Activity',
+          distance_km: a.distance_meters != null ? a.distance_meters / 1000 : undefined,
+          duration_min: a.duration_seconds ? Math.round(a.duration_seconds / 60) : undefined,
+          avg_hr: a.average_heartrate ?? undefined,
+          elevation_gain_m: a.elevation_gain_meters != null ? Math.round(a.elevation_gain_meters) : undefined,
+          calories_burned: a.calories ?? undefined,
+          avg_speed_kmh: a.average_speed_mps != null ? a.average_speed_mps * 3.6 : undefined,
+          source: a.source ?? 'gps',
+        }));
+        const acts = [...enduranceActs, ...gpsActs].slice(0, 6);
         if (!hubTarget || acts.length === 0) return null;
         return (
           <div className="pt-2 border-t" style={{ borderColor: '#f3f4f6' }}>
