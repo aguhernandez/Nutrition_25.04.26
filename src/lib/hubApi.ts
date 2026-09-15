@@ -19,7 +19,7 @@ function getProxyHeaders(): HeadersInit {
     'apikey': ANON_KEY,
   };
   const localToken = localStorage.getItem('hub_planner_token');
-  if (localToken) headers['X-Hub-Planner-Token'] = localToken;
+  if (localToken && !localToken.includes('xxxxx')) headers['X-Hub-Planner-Token'] = localToken;
   return headers;
 }
 

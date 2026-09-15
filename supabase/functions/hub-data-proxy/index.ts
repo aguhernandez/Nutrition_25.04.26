@@ -10,7 +10,7 @@ const corsHeaders = {
 const HUB_API_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/planner-hub-api";
 // New bridge (all nutrition/athlete data endpoints)
 const HUB_BRIDGE_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/nutrition-satellite-bridge";
-const PLANNER_TOKEN_DEFAULT = Deno.env.get("HUB_PLANNER_TOKEN") ?? "planner_717ed201d73949a6b59b702a5d705958";
+const PLANNER_TOKEN_DEFAULT = "planner_717ed201d73949a6b59b702a5d705958";
 
 // Endpoints served by the nutrition-satellite-bridge
 const BRIDGE_ENDPOINTS = new Set([
@@ -56,7 +56,8 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const segments = url.pathname.split("/").filter(Boolean);
     const endpoint = segments[segments.length - 1];
-    const PLANNER_TOKEN = req.headers.get("X-Hub-Planner-Token") || PLANNER_TOKEN_DEFAULT;
+    const headerToken = req.headers.get("X-Hub-Planner-Token") ?? "";
+    const PLANNER_TOKEN = headerToken && !headerToken.includes("xxxxx") ? headerToken : PLANNER_TOKEN_DEFAULT;
 
     if (!ALLOWED_ENDPOINTS.has(endpoint)) {
       return new Response(
