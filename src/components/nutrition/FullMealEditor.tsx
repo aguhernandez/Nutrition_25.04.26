@@ -379,6 +379,8 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
   const es = language === 'es';
   const effectiveUserId = targetUserId ?? profile?.id;
   const isDemo = !effectiveUserId || effectiveUserId.startsWith('demo-');
+  const resolvedEmail = targetUserEmail ?? profile?.email;
+  const resolvedName = targetUserName ?? profile?.full_name;
 
   const [activePlan, setActivePlan] = useState<ActivePlan | null>(null);
   const [weekPlans, setWeekPlans] = useState<DayPlan[]>([]);
@@ -1655,7 +1657,7 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
               );
             })}
           </div>
-          {(targetUserEmail || targetUserId) && (
+          {(resolvedEmail || effectiveUserId) && !isDemo && (
             <button
               onClick={() => setShowTrainingDrawer((v) => !v)}
               className="flex-shrink-0 flex flex-col items-center justify-center gap-1.5 rounded-xl px-4 py-3 transition-all hover:opacity-90"
@@ -2506,12 +2508,12 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               <TrainingSneakPeek
                 athleteId={effectiveUserId ?? ''}
-                athleteEmail={targetUserEmail}
+                athleteEmail={resolvedEmail}
               />
-              {(targetUserEmail || targetUserName) && (
+              {(resolvedEmail || resolvedName) && (
                 <HubHabitsCard
-                  athleteEmail={targetUserEmail ?? targetUserName ?? ''}
-                  athleteName={targetUserName}
+                  athleteEmail={resolvedEmail ?? resolvedName ?? ''}
+                  athleteName={resolvedName}
                 />
               )}
             </div>
