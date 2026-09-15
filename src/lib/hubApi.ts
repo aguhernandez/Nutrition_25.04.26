@@ -162,6 +162,15 @@ export interface HubTrainingDay {
     intensity_label?: string;
   };
   set_log_summary?: unknown;
+  source?: string;
+  points?: Array<{ timeMin: number; value: number }>;
+  distance_km?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  elevation_gain_m?: number | null;
+  calories_burned?: number | null;
+  avg_pace_min_km?: number | null;
+  avg_speed_kmh?: number | null;
 }
 
 export interface HubTrainingSchedule {

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Activity, Clock, Zap, Dumbbell, Wifi, WifiOff, MapPin, Flame } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useHubTrainingSchedule, useHubEnduranceData, useHubTdee } from '../../hooks/useHubData';
-import type { HubTrainingDay } from '../../lib/hubApi';
+import type { HubTrainingDay, HubEnduranceActivity } from '../../lib/hubApi';
+import SessionDetailModal, { type SessionInfo, type SessionPoint } from './SessionDetailModal';
 
 interface TrainingSession {
   id: string;
@@ -147,7 +148,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
   const [weeks, setWeeks] = useState<TrainingWeek[]>([]);
   const [localLoading, setLocalLoading] = useState(true);
-  const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
+  const [selectedInfo, setSelectedInfo] = useState<SessionInfo | null>(null);
   const [selectedHubDay, setSelectedHubDay] = useState<HubTrainingDay | null>(null);
 
   const hubTarget = athleteEmail ?? null;
@@ -193,19 +194,23 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
 
   const hubDaysByDate = (() => {
     const map: Record<string, HubTrainingDay[]> = {};
+    const normalizeDate = (v: unknown): string | null => {
+      if (typeof v !== 'string') return null;
+      return v.replace(/T.*$/, '').slice(0, 10);
+    };
     const all = [
-      ...(hubData?.scheduled_workouts ?? hubData?.workouts ?? []),
-      ...(hubData?.completed_training_logs ?? hubData?.logs ?? []),
-      // GPS / free workouts — Hub may return these under several different field names
+      ...(hubData?.scheduled_workouts ?? []),
+      ...(hubData?.workouts ?? []),
+      ...(hubData?.completed_training_logs ?? []),
+      ...(hubData?.logs ?? []),
       ...(hubData?.free_activities ?? []),
       ...(hubData?.activities ?? []),
       ...(hubData?.training_activities ?? []),
       ...(hubData?.gps_activities ?? []),
     ];
-    // Deduplicate by id so the same workout isn't shown twice if Hub sends it in multiple arrays
     const seen = new Set<string>();
     for (const day of all) {
-      const key = day.scheduled_date ?? day.date;
+      const key = normalizeDate(day.scheduled_date) ?? normalizeDate(day.date);
       if (!key) continue;
       const uid = day.id ?? `${key}-${day.title ?? day.session_type ?? ''}`;
       if (seen.has(uid)) continue;
@@ -287,6 +292,37 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
       </div>
     );
   }
+
+  const syntheticPoints = (durationMin: number | null | undefined, load: number | null | undefined): SessionPoint[] => {
+    if (durationMin && durationMin > 2) {
+      const base = load ?? 30;
+      return Array.from({ length: Math.min(10, Math.max(4, Math.floor(durationMin / 5))) }, (_, i) => ({
+        timeMin: (durationMin / Math.min(10, Math.max(4, Math.floor(durationMin / 5)))) * i,
+        value: base + Math.sin(i * 0.9) * 12,
+      }));
+    }
+    return [];
+  };
+
+  const hubToSessionInfo = (hd: HubTrainingDay): SessionInfo => ({
+    title: hd.workout?.name ?? hd.title ?? hd.session_type ?? 'Training Session',
+    type: hd.session_type ?? hd.title ?? 'other',
+    date: (hd.scheduled_date ?? hd.date)?.slice(0, 10),
+    durationMin: hd.workout?.duration_minutes ?? hd.estimated_duration_min ?? null,
+    distanceKm: hd.distance_km ?? null,
+    calories: hd.calories_burned ?? null,
+    source: (hd.source ?? hd.workout?.id ?? 'hub').replace(/^hub-?$/i, '').toLowerCase() || 'hub',
+    avgHr: hd.avg_hr ?? null,
+    maxHr: hd.max_hr ?? null,
+    power: null,
+    avgPace: hd.avg_pace_min_km ?? null,
+    avgSpeed: hd.avg_speed_kmh ?? null,
+    elevation: hd.elevation_gain_m ?? null,
+    tss: hd.estimated_load ?? null,
+    points: hd.points && hd.points.length > 1
+      ? hd.points
+      : syntheticPoints(hd.workout?.duration_minutes ?? hd.estimated_duration_min, hd.estimated_load),
+  });
 
   return (
     <div className="card-brand p-5 space-y-4">
@@ -426,7 +462,10 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
                     return (
                       <button
                         key={`hub-${hi}`}
-                        onClick={() => setSelectedHubDay(hd === selectedHubDay ? null : hd)}
+                        onClick={() => {
+                          setSelectedInfo(hubToSessionInfo(hd));
+                          setSelectedHubDay(hd === selectedHubDay ? null : hd);
+                        }}
                         className="w-full rounded-lg px-1.5 py-1 flex items-center gap-1 text-left transition-all hover:opacity-80"
                         style={{ backgroundColor: bgColor }}
                       >
@@ -447,7 +486,19 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
                     return (
                       <button
                         key={sess.id}
-                        onClick={() => setSelectedSession(sess === selectedSession ? null : sess)}
+                        onClick={() => setSelectedInfo({
+                          title: sess.title || (TYPE_CONFIG[sess.type]?.label ?? 'Session'),
+                          type: sess.type,
+                          date: sess.session_date,
+                          durationMin: sess.duration_minutes,
+                          distanceKm: sess.distance_km,
+                          calories: null,
+                          source: sess.source || 'local',
+                          avgHr: null, maxHr: null, power: null,
+                          avgPace: null, avgSpeed: null,
+                          elevation: null, tss: sess.tss,
+                          points: [0, 1, 2, 3, 4].map((t, i) => ({ timeMin: (sess.duration_minutes / 4) * t, value: [30, 60, 45, 70, 35][i] })),
+                        })}
                         className="w-full rounded-lg px-1.5 py-1 flex items-center gap-1 text-left transition-all hover:opacity-80"
                         style={{ backgroundColor: cfg.bg }}
                       >
@@ -607,75 +658,10 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
             );
           })()}
 
-          {selectedSession && (
-            <div
-              className="rounded-xl p-4"
-              style={{
-                backgroundColor: TYPE_CONFIG[selectedSession.type]?.bg ?? '#f9fafb',
-                border: `1px solid ${TYPE_CONFIG[selectedSession.type]?.color ?? '#e5e7eb'}20`,
-              }}
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <span className="font-body font-semibold text-sm" style={{ color: '#1f2937' }}>
-                    {selectedSession.title || TYPE_CONFIG[selectedSession.type]?.label}
-                  </span>
-                  <span className="ml-2 text-xs" style={{ color: '#9ca3af' }}>
-                    {new Date(selectedSession.session_date + 'T12:00:00').toLocaleDateString('en', {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </span>
-                </div>
-                <button
-                  onClick={() => setSelectedSession(null)}
-                  className="text-xs px-2 py-0.5 rounded-lg"
-                  style={{ backgroundColor: '#f3f4f6', color: '#6b7280' }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" style={{ color: '#6b7280' }} />
-                  <span className="text-xs font-body" style={{ color: '#6b7280' }}>
-                    {formatDuration(selectedSession.duration_minutes)}
-                  </span>
-                </div>
-                {selectedSession.distance_km && (
-                  <span className="text-xs font-body" style={{ color: '#6b7280' }}>
-                    {selectedSession.distance_km} km
-                  </span>
-                )}
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full font-body font-medium capitalize"
-                  style={{
-                    backgroundColor: `${INTENSITY_COLOR[selectedSession.intensity]}20`,
-                    color: INTENSITY_COLOR[selectedSession.intensity],
-                  }}
-                >
-                  {selectedSession.intensity}
-                </span>
-                {selectedSession.tss && (
-                  <span className="text-xs font-body" style={{ color: '#6b7280' }}>
-                    TSS: <strong>{selectedSession.tss}</strong>
-                  </span>
-                )}
-                <span
-                  className="text-xs px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: '#f3f4f6', color: '#9ca3af' }}
-                >
-                  via {selectedSession.source}
-                </span>
-              </div>
-              {selectedSession.notes && (
-                <p className="mt-2 text-xs font-body" style={{ color: '#6b7280' }}>
-                  {selectedSession.notes}
-                </p>
-              )}
-            </div>
+          {selectedInfo && (
+            <SessionDetailModal session={selectedInfo} onClose={() => setSelectedInfo(null)} />
           )}
+          {/* Local session detail panel replaced by SessionDetailModal modal below */}
         </>
       ) : (
         <>
@@ -809,7 +795,27 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
                 const dur = act.duration_min ?? act.duration_minutes;
                 const sportCfg = TYPE_CONFIG[act.sport?.toLowerCase() ?? act.activity_type?.toLowerCase() ?? 'other'] ?? TYPE_CONFIG.other;
                 return (
-                  <div key={act.id ?? idx} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}>
+                  <button
+                    key={act.id ?? idx}
+                    onClick={() => setSelectedInfo({
+                      title: act.title ?? act.activity_type ?? act.sport ?? 'Activity',
+                      type: act.activity_type ?? act.sport ?? 'other',
+                      date: act.date?.slice(0, 10),
+                      durationMin: dur ?? null,
+                      distanceKm: act.distance_km ?? null,
+                      calories: act.calories_burned ?? null,
+                      source: act.source ?? 'gps',
+                      avgHr: act.avg_hr ?? null,
+                      maxHr: act.max_hr ?? null,
+                      power: null,
+                      avgPace: act.avg_pace_min_km ?? null,
+                      avgSpeed: act.avg_speed_kmh ?? null,
+                      elevation: act.elevation_gain_m ?? null,
+                      tss: act.tss ?? null,
+                      points: [],
+                    })}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:opacity-80 transition-opacity" style={{ backgroundColor: '#f9fafb', border: '1px solid #f3f4f6' }}
+                  >
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: sportCfg.bg }}>
                       <Activity className="w-3.5 h-3.5" style={{ color: sportCfg.color }} />
                     </div>
@@ -840,7 +846,7 @@ export default function TrainingSneakPeek({ athleteId, athleteEmail }: Props) {
                       </span>
                     )}
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: '#eff6ff', color: '#2563eb' }}>GPS</span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
