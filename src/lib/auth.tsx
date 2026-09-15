@@ -4,7 +4,6 @@ import type { HubUser, MembershipSlug, LoginResult } from '../hooks/useSatellite
 import { supabase } from './supabase';
 
 export type UserRole = 'admin' | 'coach' | 'athlete';
-
 export type { MembershipSlug };
 
 export interface UserProfile {
@@ -27,9 +26,6 @@ interface AuthContextValue {
   isDevMode: boolean;
   membershipSlug: MembershipSlug;
   authError: string | null;
-  blocked: boolean;
-  blockedMessageEs: string;
-  blockedMessageEn: string;
   login: () => void;
   loginWithCredentials: (email: string, password: string) => Promise<LoginResult>;
   logout: () => void;
@@ -56,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const syncedRef = useRef<string | null>(null);
 
-  const { user: hubUser, loading: hubLoading, hasToken, authError: hubAuthError, blocked: hubBlocked, blockedMessageEs, blockedMessageEn, login: hubLogin, loginWithCredentials: hubLoginWithCredentials, logout: hubLogout } = useSatelliteAuth();
+  const { user: hubUser, loading: hubLoading, hasToken, authError: hubAuthError, login: hubLogin, loginWithCredentials: hubLoginWithCredentials, logout: hubLogout } = useSatelliteAuth();
 
   const [devUser, setDevUser] = useState<HubUser | null>(null);
   const [devHasToken, setDevHasToken] = useState(false);
@@ -83,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: freshProfile.hub_user_id,
         email: freshProfile.email,
         name: freshProfile.full_name,
-        role: (freshProfile.role as string) === 'nutritionist' || (freshProfile.role as string) === 'head_coach' ? 'coach' : freshProfile.role,
+        role: (freshProfile.role as string) === 'coach' ? 'trainer' : freshProfile.role,
         membership_slug: freshProfile.membership_slug,
         membership_name: freshProfile.membership_name,
       });
@@ -128,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileState(normalizedProfile);
       } else {
         console.log('[Sync] Creating new profile for:', hubUser.email);
-        const normalizedRole = (hubUser.role === 'trainer' || hubUser.role === 'nutritionist' || hubUser.role === 'head_coach') ? 'coach' : hubUser.role;
+        const normalizedRole = hubUser.role === 'trainer' ? 'coach' : hubUser.role;
         const newProfileData = {
           hub_user_id: hubUser.id,
           email: hubUser.email,
@@ -196,7 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       id: devProfile.hub_user_id,
       email: devProfile.email,
       name: devProfile.full_name,
-      role: devProfile.role === 'coach' ? 'coach' : devProfile.role,
+      role: devProfile.role === 'coach' ? 'trainer' : devProfile.role,
       membership_slug: devProfile.membership_slug,
       membership_name: devProfile.membership_name,
     });
@@ -224,7 +220,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user?.membership_slug ?? profile?.membership_slug ?? 'inicia';
 
   const authError = IS_DEV_MODE ? null : (hubAuthError ?? null);
-  const blocked = IS_DEV_MODE ? false : hubBlocked;
 
   return (
     <AuthContext.Provider value={{
@@ -235,9 +230,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isDevMode: IS_DEV_MODE,
       membershipSlug,
       authError,
-      blocked,
-      blockedMessageEs: blockedMessageEs ?? '',
-      blockedMessageEn: blockedMessageEn ?? '',
       login,
       loginWithCredentials,
       logout,

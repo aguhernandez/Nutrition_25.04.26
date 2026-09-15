@@ -13,14 +13,11 @@ export class HubApiError extends Error {
 }
 
 function getProxyHeaders(): HeadersInit {
-  const headers: Record<string, string> = {
+  return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${ANON_KEY}`,
     'apikey': ANON_KEY,
   };
-  const localToken = localStorage.getItem('hub_planner_token');
-  if (localToken && !localToken.includes('xxxxx')) headers['X-Hub-Planner-Token'] = localToken;
-  return headers;
 }
 
 async function handleResponse<T>(response: Response): Promise<T> {

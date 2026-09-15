@@ -6,7 +6,7 @@ export interface HubUser {
   id: string;
   email: string;
   name?: string;
-  role: 'athlete' | 'trainer' | 'admin' | 'nutritionist' | 'head_coach';
+  role: 'athlete' | 'trainer' | 'admin';
   active_plan?: string[];
   membership_slug: MembershipSlug;
   membership_name: string;
@@ -56,21 +56,10 @@ export interface LoginResult {
   error?: string;
 }
 
-const ALLOWED_SATELLITE_ROLES = new Set(['nutritionist', 'head_coach', 'admin']);
-const BLOCKED_MESSAGE_ES = 'Este satélite es solo para Admins, Nutricionistas, Head Coaches y Atletas con membresía Pro';
-const BLOCKED_MESSAGE_EN = 'This satellite is only for Admins, Nutritionists, Head Coaches, and Pro Athletes';
-
-function isAccessAllowed(role: HubUser['role'], membershipSlug: MembershipSlug): boolean {
-  if (ALLOWED_SATELLITE_ROLES.has(role)) return true;
-  if (role === 'athlete' && membershipSlug === 'pro') return true;
-  return false;
-}
-
 export function useSatelliteAuth() {
   const [user, setUser] = useState<HubUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -117,12 +106,6 @@ export function useSatelliteAuth() {
       const hubUser = extractUserFromPayload(payload);
 
       if (hubUser) {
-        if (!isAccessAllowed(hubUser.role, hubUser.membership_slug)) {
-          console.log('[Auth] Access denied for role:', hubUser.role, 'membership:', hubUser.membership_slug);
-          setBlocked(true);
-          setUser(null);
-          return;
-        }
         console.log('[Auth] User authenticated from token:', hubUser.email);
         setUser(hubUser);
       } else {
@@ -153,22 +136,14 @@ export function useSatelliteAuth() {
       const data = await response.json();
       const hubUser = data.user ?? (data.id ? data : null);
       if (hubUser?.id) {
-        const proxyRole = (hubUser.role ?? 'athlete') as HubUser['role'];
-        const proxyMembership = (hubUser.membership_slug ?? 'inicia') as MembershipSlug;
-        if (!isAccessAllowed(proxyRole, proxyMembership)) {
-          console.log('[Auth] Access denied via proxy for role:', proxyRole, 'membership:', proxyMembership);
-          setBlocked(true);
-          setUser(null);
-          return;
-        }
         console.log('[Auth] User authenticated via proxy:', hubUser.email);
         setUser({
           id: hubUser.id,
           email: hubUser.email,
           name: hubUser.name,
-          role: proxyRole,
+          role: hubUser.role ?? 'athlete',
           active_plan: hubUser.active_plan,
-          membership_slug: proxyMembership,
+          membership_slug: hubUser.membership_slug ?? 'inicia',
           membership_name: hubUser.membership_name ?? 'Asciende Inicia',
         });
       } else {
@@ -205,9 +180,6 @@ export function useSatelliteAuth() {
       if (payload && !isTokenExpired(payload)) {
         const hubUser = extractUserFromPayload(payload);
         if (hubUser) {
-          if (!isAccessAllowed(hubUser.role, hubUser.membership_slug)) {
-            return { success: false, error: BLOCKED_MESSAGE_ES };
-          }
           setUser(hubUser);
           return { success: true };
         }
@@ -215,9 +187,6 @@ export function useSatelliteAuth() {
 
       // fallback: validate via proxy
       await checkAuthViaProxy(token);
-      if (blocked) {
-        return { success: false, error: BLOCKED_MESSAGE_ES };
-      }
       return { success: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection error';
@@ -235,11 +204,10 @@ export function useSatelliteAuth() {
   const logout = async () => {
     localStorage.removeItem(SESSION_TOKEN_KEY);
     setUser(null);
-    setBlocked(false);
     window.location.href = HUB_URL;
   };
 
   const hasToken = user !== null;
 
-  return { user, loading, hasToken, authError, blocked, blockedMessageEs: BLOCKED_MESSAGE_ES, blockedMessageEn: BLOCKED_MESSAGE_EN, login, loginWithCredentials, logout };
+  return { user, loading, hasToken, authError, login, loginWithCredentials, logout };
 }
