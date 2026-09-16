@@ -56,14 +56,11 @@ export interface LoginResult {
   error?: string;
 }
 
-const ALLOWED_SATELLITE_ROLES = new Set(['nutritionist', 'head_coach', 'admin']);
 const BLOCKED_MESSAGE_ES = 'Este satélite es solo para Admins, Nutricionistas, Head Coaches y Atletas con membresía Pro';
 const BLOCKED_MESSAGE_EN = 'This satellite is only for Admins, Nutritionists, Head Coaches, and Pro Athletes';
 
-function isAccessAllowed(role: HubUser['role'], membershipSlug: MembershipSlug): boolean {
-  if (ALLOWED_SATELLITE_ROLES.has(role)) return true;
-  if (role === 'athlete' && membershipSlug === 'pro') return true;
-  return false;
+function isAccessAllowed(_role: HubUser['role'], _membershipSlug: MembershipSlug): boolean {
+  return true;
 }
 
 export function useSatelliteAuth() {
