@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const HUB_API_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/planner-hub-api";
 const HUB_BRIDGE_BASE = "https://ngkcbygyoobqhlmlnuvl.supabase.co/functions/v1/nutrition-satellite-bridge";
-const PLANNER_TOKEN_DEFAULT = "planner_717ed201d73949a6b59b702a5d705958";
+const PLANNER_TOKEN_DEFAULT = "planner_71a6e1bf0ed740638958a79232f1a24a";
 
 const BRIDGE_ENDPOINTS = new Set([
   "athlete-profile",
