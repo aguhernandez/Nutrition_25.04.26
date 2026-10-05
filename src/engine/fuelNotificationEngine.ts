@@ -140,7 +140,7 @@ function buildAidStationAlerts(
       scheduledAtSec: Math.max(0, Math.round(timeAtStation - 90)),
       kmMark: Math.max(0, s.km - 0.3),
       message: `Zona de avituallamiento · ${s.label}`,
-      detail: `km ${s.km}${s.hasFood ? ' · comida disponible' : ''}${s.hasMedical ? ' · servicio médico' : ''}`,
+      detail: `km ${s.km}${s.hasFood ? ' · comida disponible' : ''}${s.supplyTypes?.includes('medical') ? ' · servicio médico' : ''}`,
       status: 'pending' as NotificationStatus,
       payload: {},
     };

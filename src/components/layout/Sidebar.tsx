@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
   Fingerprint,
+  MapPin,
 } from 'lucide-react';
 import type { UserRole } from '../../lib/auth';
 import { useAuth } from '../../lib/auth';
@@ -35,7 +36,8 @@ export type AppView =
   | 'nutrition-menu-templates'
   | 'nutrition-supplements'
   | 'nutrition-food-database'
-  | 'passport';
+  | 'passport'
+  | 'race-editor';
 
 interface NavItem {
   view: AppView;
@@ -65,6 +67,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   { view: 'planner', label_es: 'Planificador de Carreras', label_en: 'Race Planner', icon: Home, roles: ['admin', 'coach', 'athlete'], separator: true },
   { view: 'saved', label_es: 'Carreras Guardadas', label_en: 'Saved Races', icon: BookOpen, roles: ['admin', 'coach', 'athlete'] },
+  { view: 'race-editor', label_es: 'Editor de Carreras', label_en: 'Race Editor', icon: MapPin, roles: ['admin'] },
   { view: 'athletes', label_es: 'Atletas', label_en: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
   { view: 'passport', label_es: 'Pasaporte Biológico', label_en: 'Biological Passport', icon: Fingerprint, roles: ['admin', 'coach', 'athlete'], separator: true },
   { view: 'reporting', label_es: 'Reportes', label_en: 'Reporting', icon: BarChart2, roles: ['admin', 'coach'] },

@@ -186,6 +186,7 @@ export interface RaceCatalogEntry {
   avg_humidity_pct: number;
   altitude_m: number;
   description: string;
+  is_verified?: boolean;
 }
 
 export interface HydrationStation {
@@ -193,6 +194,9 @@ export interface HydrationStation {
   km: number;
   label: string;
   hasFood: boolean;
+  altitudeM?: number;
+  supplyTypes?: string[];
+  services?: string[];
 }
 
 export interface ElevationPoint {

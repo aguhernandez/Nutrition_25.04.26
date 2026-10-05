@@ -12,6 +12,7 @@ import AthletesView from './components/views/AthletesView';
 import BiologicalPassportView from './components/views/BiologicalPassportView';
 import ReportingView from './components/views/ReportingView';
 import SettingsView from './components/views/SettingsView';
+import RaceEditorView from './components/race-planner/RaceEditorView';
 import NutritionModule from './components/nutrition/NutritionModule';
 import type { NutritionTab } from './components/nutrition/NutritionModule';
 import LocalDevMode from './components/auth/LocalDevMode';
@@ -33,6 +34,7 @@ const VIEW_TITLES_ES: Record<AppView, string> = {
   'nutrition-supplements': 'Suplementos',
   'nutrition-food-database': 'Food Database',
   'passport': 'Pasaporte Biológico',
+  'race-editor': 'Editor de Carreras',
 };
 
 const VIEW_TITLES_EN: Record<AppView, string> = {
@@ -49,6 +51,7 @@ const VIEW_TITLES_EN: Record<AppView, string> = {
   'nutrition-supplements': 'Supplements',
   'nutrition-food-database': 'Food Database',
   'passport': 'Biological Passport',
+  'race-editor': 'Race Editor',
 };
 
 const VIEW_TO_TAB: Partial<Record<AppView, NutritionTab>> = {
@@ -150,6 +153,8 @@ function AppShell() {
   const guardedView = (): AppView => {
     if (activeView === 'athletes' && role === 'athlete') return 'nutrition-dashboard';
     if (activeView === 'reporting' && role === 'athlete') return 'nutrition-dashboard';
+    if (activeView === 'race-editor' && role !== 'admin') return 'nutrition-dashboard';
+  
     return activeView;
   };
 
@@ -201,6 +206,7 @@ function AppShell() {
             }}
           />
         )}
+        {view === 'race-editor' && <RaceEditorView />}
         {view === 'athletes' && <AthletesView />}
         {view === 'passport' && <BiologicalPassportView />}
         {view === 'reporting' && <ReportingView />}

@@ -35,40 +35,57 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
   const elevGain = raceData.elevationGain || catalogEntry?.elevation_gain_m || 0;
 
   useEffect(() => {
-    const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const pts = generateElevationProfile(distanceKm, elevGain, seed);
-    setElevationPoints(pts);
+    let cancelled = false;
+    async function loadCourseData() {
+      if (catalogEntry) {
+        const year = raceData.raceDate ? new Date(raceData.raceDate).getFullYear() : new Date().getFullYear();
+        const [{ data: elevData }, { data: aidData }, { data: profileData }] = await Promise.all([
+          supabase.from('race_elevation_data').select('elevation_points').eq('race_catalog_id', catalogEntry.id).maybeSingle(),
+          supabase.from('race_aid_stations').select('*').eq('race_catalog_id', catalogEntry.id).order('sort_order'),
+          supabase.from('race_course_profiles').select('*').eq('race_catalog_id', catalogEntry.id).eq('edition_year', year).maybeSingle(),
+        ]);
 
-    if (catalogEntry && user) {
-      loadSavedProfile(pts);
-    } else {
-      const defaultStations = generateHydrationStations(distanceKm, pts, catalogEntry);
-      setStations(defaultStations);
-    }
-  }, [raceData.raceName, distanceKm, elevGain]);
+        if (cancelled) return;
 
-  async function loadSavedProfile(pts: ElevationPoint[]) {
-    if (!catalogEntry || !user) return;
-    const year = raceData.raceDate ? new Date(raceData.raceDate).getFullYear() : new Date().getFullYear();
-    const { data } = await supabase
-      .from('race_course_profiles')
-      .select('*')
-      .eq('race_catalog_id', catalogEntry.id)
-      .eq('user_id', user.id)
-      .eq('edition_year', year)
-      .maybeSingle();
+        let pts: ElevationPoint[] = [];
+        if (elevData?.elevation_points && (elevData.elevation_points as ElevationPoint[]).length > 0) {
+          pts = elevData.elevation_points as ElevationPoint[];
+        } else if (profileData?.elevation_points && (profileData.elevation_points as ElevationPoint[]).length > 0) {
+          pts = profileData.elevation_points as ElevationPoint[];
+        } else {
+          const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+          pts = generateElevationProfile(distanceKm, elevGain, seed);
+        }
+        setElevationPoints(pts);
 
-    if (data) {
-      setProfileId(data.id);
-      setStations((data.hydration_stations as HydrationStation[]) ?? []);
-      if ((data.elevation_points as ElevationPoint[])?.length > 0) {
-        setElevationPoints(data.elevation_points as ElevationPoint[]);
+        if (aidData && aidData.length > 0) {
+          const aidStations: HydrationStation[] = aidData.map((a) => ({
+            id: a.id,
+            km: Number(a.distance_km),
+            label: a.name,
+            hasFood: (a.supply_types as string[])?.includes('food') ?? false,
+            altitudeM: Number(a.altitude_m),
+            supplyTypes: a.supply_types as string[] ?? [],
+            services: a.services as string[] ?? [],
+          }));
+          setStations(aidStations);
+          if (profileData?.id) setProfileId(profileData.id);
+        } else if (profileData) {
+          setProfileId(profileData.id);
+          setStations((profileData.hydration_stations as HydrationStation[]) ?? []);
+        } else {
+          setStations(generateHydrationStations(distanceKm, pts, catalogEntry));
+        }
+      } else {
+        const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        const pts = generateElevationProfile(distanceKm, elevGain, seed);
+        setElevationPoints(pts);
+        setStations(generateHydrationStations(distanceKm, pts, catalogEntry));
       }
-    } else {
-      const defaultStations = generateHydrationStations(distanceKm, pts, catalogEntry);
-      setStations(defaultStations);
     }
-  }
+    loadCourseData();
+    return () => { cancelled = true; };
+  }, [raceData.raceName, distanceKm, elevGain, catalogEntry?.id]);
 
   async function handleSave() {
     if (!user || !catalogEntry) return;
