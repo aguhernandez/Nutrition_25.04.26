@@ -327,6 +327,49 @@ export default function RacePlanner({
               setPushResult(status);
               setTimeout(() => setPushResult(null), 4000);
             }}
+            coachSendBanner={isCoach && savedId && selectedAthlete ? (
+              <div
+                className="mt-4 mb-2 rounded-2xl p-5 flex items-center justify-between"
+                style={{ backgroundColor: '#f0fdf4', border: '2px solid #bbf7d0' }}
+              >
+                <div>
+                  <p className="font-body font-semibold text-sm" style={{ color: '#14532d' }}>
+                    {pushResult === 'success'
+                      ? `Carrera enviada al calendario de ${selectedAthlete.full_name}`
+                      : pushResult === 'error'
+                        ? 'Error al enviar. Intenta de nuevo.'
+                        : `Enviar al calendario de ${selectedAthlete.full_name}`}
+                  </p>
+                  <p className="font-body text-xs mt-0.5" style={{ color: '#15803d' }}>
+                    {pushResult === 'success'
+                      ? 'El atleta vera esta carrera en su calendario.'
+                      : 'El atleta recibira la carrera en su Hub.'}
+                  </p>
+                </div>
+                {pushResult === 'success' ? (
+                  <CheckCircle2 className="w-6 h-6" style={{ color: '#16a34a' }} />
+                ) : pushResult === 'error' ? (
+                  <AlertCircle className="w-6 h-6" style={{ color: '#dc2626' }} />
+                ) : (
+                  <button
+                    onClick={handleSendToCalendar}
+                    disabled={pushingToHub}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-body font-bold text-sm transition-all"
+                    style={{
+                      backgroundColor: pushingToHub ? '#86efac' : '#16a34a',
+                      color: '#fff',
+                      cursor: pushingToHub ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {pushingToHub ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Send className="w-4 h-4" /> Send to Calendar</>
+                    )}
+                  </button>
+                )}
+              </div>
+            ) : null}
           />
           {!savedId && (
             <div className="mt-4 mb-2">

@@ -39,6 +39,7 @@ interface Props {
   onNewRace: () => void;
   hideSendToHub?: boolean;
   onSendToHubResult?: (status: 'success' | 'error') => void;
+  coachSendBanner?: React.ReactNode;
 }
 
 function StatCard({ label, value, unit, color, isDark }: { label: string; value: string | number; unit?: string; color: string; isDark: boolean }) {
@@ -163,7 +164,7 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
 
 type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
-export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult }: Props) {
+export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner }: Props) {
   const { theme, language } = usePreferences();
   const { user, profile } = useAuth();
   const isDark = theme === 'dark';
@@ -410,6 +411,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
             {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : saved ? <><CheckCircle className="w-4 h-4" /> Saved!</> : <><BookmarkPlus className="w-4 h-4" /> Save Plan</>}
           </button>
         </div>
+        {coachSendBanner}
       </div>
 
       <div className="hidden print:block mb-6">
