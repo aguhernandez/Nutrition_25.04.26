@@ -281,7 +281,7 @@ function RaceEditorPanel({ race, isDark, language, editorEmail, editorRole, tab,
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className={`text-lg font-bold ${themeVars.textPrimary}`}>{race.name}</h2>
-          <p className={`text-xs ${themeVars.textMuted}`}>{race.city}, {race.country} · {race.distance_km}km · +{race.elevation_gain_m}m</p>
+          <p className={`text-xs ${themeVars.textMuted}`}>{race.city}, {race.country} · {race.distance_km}km · +{race.elevation_gain_m}m{race.race_date ? ` · ${race.race_date}` : ''}</p>
         </div>
         <TabBar tab={tab} onChange={onTabChange} language={language} isDark={isDark} />
       </div>
@@ -342,6 +342,7 @@ function RaceDetailsEditor({ isNew, race, isDark, language, editorEmail, editorR
     altitude_m: race?.altitude_m ?? 0,
     description: race?.description ?? '',
     is_verified: race?.is_verified ?? false,
+    race_date: race?.race_date ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -358,10 +359,12 @@ function RaceDetailsEditor({ isNew, race, isDark, language, editorEmail, editorR
         onSaved(created);
       } else if (race) {
         const changes: string[] = [];
-        const fields: (keyof RaceCatalogEntry)[] = ['name', 'sport', 'country', 'city', 'distance_km', 'elevation_gain_m', 'typical_month', 'typical_day', 'avg_temperature_c', 'avg_humidity_pct', 'altitude_m', 'description'];
+        const fields: (keyof RaceCatalogEntry)[] = ['name', 'sport', 'country', 'city', 'distance_km', 'elevation_gain_m', 'typical_month', 'typical_day', 'avg_temperature_c', 'avg_humidity_pct', 'altitude_m', 'description', 'race_date'];
         for (const field of fields) {
-          if (race[field] !== form[field as string]) {
-            changes.push(`${field}: ${String(race[field])} → ${String(form[field as string])}`);
+          const oldVal = race[field] ?? '';
+          const newVal = form[field as string] ?? '';
+          if (String(oldVal) !== String(newVal)) {
+            changes.push(`${field}: ${String(oldVal)} → ${String(newVal)}`);
           }
         }
         await updateRace(race.id, form);
@@ -432,6 +435,9 @@ function RaceDetailsEditor({ isNew, race, isDark, language, editorEmail, editorR
             <input type="number" min={1} max={31} value={form.typical_day} onChange={(e) => set('typical_day', parseInt(e.target.value) || 1)} className={inputCls} style={{ background: inputBg, border: `1px solid ${inputBorder}`, color: inputText }} />
           </Field>
         </div>
+        <Field label="Race Date" language={language} label_es="Fecha de la Carrera" labelColor={labelColor}>
+          <input type="date" value={form.race_date} onChange={(e) => set('race_date', e.target.value)} className={inputCls} style={{ background: inputBg, border: `1px solid ${inputBorder}`, color: inputText }} />
+        </Field>
       </div>
 
       <Field label="Description" language={language} label_es="Descripción" labelColor={labelColor}>

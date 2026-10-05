@@ -187,6 +187,7 @@ export interface RaceCatalogEntry {
   altitude_m: number;
   description: string;
   is_verified?: boolean;
+  race_date?: string | null;
 }
 
 export interface HydrationStation {

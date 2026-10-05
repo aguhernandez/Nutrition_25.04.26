@@ -61,6 +61,7 @@ export async function createRace(input: Partial<RaceCatalogEntry>): Promise<Race
       altitude_m: input.altitude_m ?? 0,
       description: input.description ?? '',
       is_verified: input.is_verified ?? false,
+      race_date: (input.race_date && input.race_date.trim() !== '') ? input.race_date : null,
     })
     .select('*')
     .single();
@@ -83,6 +84,7 @@ export async function updateRace(id: string, input: Partial<RaceCatalogEntry>): 
     altitude_m: input.altitude_m,
     description: input.description,
     is_verified: input.is_verified,
+    race_date: (input.race_date && input.race_date.trim() !== '') ? input.race_date : null,
   }).eq('id', id);
   if (error) throw error;
 }
@@ -212,5 +214,7 @@ function mapRaceRow(row: Record<string, unknown>): RaceCatalogEntry {
     avg_humidity_pct: Number(row.avg_humidity_pct),
     altitude_m: Number(row.altitude_m),
     description: row.description as string,
+    is_verified: row.is_verified as boolean | undefined,
+    race_date: (row.race_date as string | null) ?? null,
   };
 }
