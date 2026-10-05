@@ -1,6 +1,6 @@
 import { Pencil, Check, X } from 'lucide-react';
 import { useState } from 'react';
-import type { EditableSegment } from '../../../types/editablePlan';
+import type { EditableSegment, RaceExecutionItem } from '../../../types/editablePlan';
 import { usePreferences } from '../../../lib/preferences';
 
 function formatDuration(totalMin: number): string {
@@ -15,10 +15,12 @@ interface CellProps {
   numeric?: boolean;
   colorClass?: string;
   isDark: boolean;
+  inline?: boolean;
 }
 
-function EditableCell({ value, onSave, numeric, colorClass, isDark }: CellProps) {
+function EditableCell({ value, onSave, numeric, colorClass, isDark, inline = false }: CellProps) {
   const [editing, setEditing] = useState(false);
+  const CellTag = inline ? 'div' : 'td';
   const [draft, setDraft] = useState(String(value));
 
   const commit = () => {
@@ -33,7 +35,7 @@ function EditableCell({ value, onSave, numeric, colorClass, isDark }: CellProps)
 
   if (editing) {
     return (
-      <td className="px-3 py-2 whitespace-nowrap">
+      <CellTag className="px-3 py-2 whitespace-nowrap">
         <div className="flex items-center gap-1">
           <input
             autoFocus
@@ -53,12 +55,12 @@ function EditableCell({ value, onSave, numeric, colorClass, isDark }: CellProps)
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
-      </td>
+      </CellTag>
     );
   }
 
   return (
-    <td
+    <CellTag
       className={`px-3 py-2 text-sm cursor-pointer group whitespace-nowrap ${colorClass ?? (isDark ? 'text-gray-300' : 'text-gray-600')}`}
       onClick={() => { setDraft(String(value)); setEditing(true); }}
     >
@@ -66,16 +68,18 @@ function EditableCell({ value, onSave, numeric, colorClass, isDark }: CellProps)
         {value}
         <Pencil className="w-3 h-3 ml-1 inline opacity-0 group-hover:opacity-40 transition-opacity" />
       </span>
-    </td>
+    </CellTag>
   );
 }
 
 interface Props {
   segments: EditableSegment[];
+  executionItems?: RaceExecutionItem[];
   onChange: (segments: EditableSegment[]) => void;
+  onExecutionChange?: (items: RaceExecutionItem[]) => void;
 }
 
-export default function EditableSegmentTable({ segments, onChange }: Props) {
+export default function EditableSegmentTable({ segments, executionItems = [], onChange, onExecutionChange }: Props) {
   const { theme } = usePreferences();
   const isDark = theme === 'dark';
 
@@ -101,7 +105,7 @@ export default function EditableSegmentTable({ segments, onChange }: Props) {
 
   return (
     <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${borderColor}` }}>
-      <table className="w-full text-xs">
+      {executionItems.length === 0 && <table className="w-full text-xs">
         <thead>
           <tr style={{ backgroundColor: headerBg, borderBottom: `1px solid ${borderColor}` }}>
             <th className={`px-3 py-2.5 text-left font-semibold uppercase tracking-wider ${textMuted}`}>Time</th>
@@ -157,7 +161,22 @@ export default function EditableSegmentTable({ segments, onChange }: Props) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
+      {executionItems.length > 0 && (
+        <div className="border-t p-4" style={{ borderColor, backgroundColor: footerBg }}>
+          <div className={`text-xs font-bold uppercase tracking-wider mb-3 ${textMuted}`}>Timeline supplements and meals</div>
+          <div className="space-y-2">
+            {executionItems.map((item, index) => (
+              <div key={item.id} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ backgroundColor: rowAltBg }}>
+                <span className={`w-16 text-xs font-bold ${textPrimary}`}>{formatDuration(item.timeMin)}</span>
+                <span className={`w-20 text-xs ${textMuted}`}>{item.distanceLabel}</span>
+                <EditableCell value={item.title} onSave={(value) => onExecutionChange?.(executionItems.map((current, i) => i === index ? { ...current, title: value } : current))} isDark={isDark} inline />
+                <span className={`text-xs ${textMuted}`}>{item.quantity} ×</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className={`px-4 py-2 border-t`} style={{ backgroundColor: footerBg, borderColor }}>
         <p className={`text-xs ${textMuted}`}>Click any value to edit. Changes are saved locally and reflected in PDF export.</p>
       </div>

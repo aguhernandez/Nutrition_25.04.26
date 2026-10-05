@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import type { Competition, StrategyOutput, RaceCatalogEntry, HydrationStation } from '../../../types/race';
 import RaceCourseView from '../course/RaceCourseView';
-import type { EditablePlan } from '../../../types/editablePlan';
+import type { EditablePlan, RaceExecutionItem } from '../../../types/editablePlan';
 import type { RaceNutritionPlan } from '../../../types/nutrition';
 import { getSportConfig } from '../../../config/sports';
 import { printFullReport, printCueCard, buildSegments } from '../../../utils/generatePrintPlan';
@@ -173,6 +173,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
   const [saved, setSaved] = useState(false);
   const [editablePlan, setEditablePlan] = useState<EditablePlan | null>(null);
   const [nutritionPlan, setNutritionPlan] = useState<RaceNutritionPlan | undefined>(undefined);
+  const [executionItems, setExecutionItems] = useState<RaceExecutionItem[]>([]);
   const [hydrationStations, setHydrationStations] = useState<HydrationStation[]>([]);
   const [hubPushStatus, setHubPushStatus] = useState<HubPushStatus>('idle');
   const [hubPushError, setHubPushError] = useState<string | null>(null);
@@ -209,8 +210,24 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
     setSaving(false);
   };
 
-  const handleFullReport = () => printFullReport(competition, editablePlan ?? undefined);
-  const handleCueCard = () => printCueCard(competition, editablePlan ?? undefined);
+  useEffect(() => {
+    const timeline = nutritionPlan?.timeline ?? [];
+    setExecutionItems([...timeline].filter((item) => item.timing_minutes !== null).sort((a, b) => (a.timing_minutes ?? 0) - (b.timing_minutes ?? 0)).map((item) => ({
+      id: item.id,
+      timeMin: item.timing_minutes ?? 0,
+      distanceLabel: item.timing_mode === 'distance' ? `${item.distance_marker} ${competition.raceData.distanceUnit}` : item.timing_mode === 'aid_station' ? (item.aid_station_name ?? 'Aid station') : '',
+      title: item.product?.full_name ?? item.recipe?.name ?? 'Nutrition source',
+      quantity: item.quantity,
+      calories: (item.product?.calories_per_serving ?? item.recipe?.calories_kcal ?? 0) * item.quantity,
+      carbsG: (item.product?.carbs_g ?? item.recipe?.carbs_g ?? 0) * item.quantity,
+      sodiumMg: (item.product?.sodium_mg ?? item.recipe?.sodium_mg ?? 0) * item.quantity,
+      liquidMl: (item.product?.serving_size_ml ?? 0) * item.quantity,
+    })));
+  }, [nutritionPlan, competition.raceData.distanceUnit]);
+
+  const printablePlan = editablePlan ? { ...editablePlan, executionItems } : undefined;
+  const handleFullReport = () => printFullReport(competition, printablePlan);
+  const handleCueCard = () => printCueCard(competition, printablePlan);
 
   const handleSendToHub = async () => {
     const athleteEmail = profile?.email || user?.email;
@@ -660,7 +677,9 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
           <Section icon={ClipboardList} title="Race Execution Plan" color="from-sky-500 to-blue-600" defaultOpen={false} badge="editable" isDark={isDark}>
             <EditableSegmentTable
               segments={editablePlan.segments}
+              executionItems={executionItems}
               onChange={(segments) => setEditablePlan((p) => p ? { ...p, segments } : p)}
+              onExecutionChange={setExecutionItems}
             />
           </Section>
         )}

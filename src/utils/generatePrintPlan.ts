@@ -1,5 +1,5 @@
 import type { Competition, StrategyOutput, DayMeal, RiskFlag, CaffeineDose, ElevationPoint } from '../types/race';
-import type { EditablePlan, EditableSegment } from '../types/editablePlan';
+import type { EditablePlan, EditableSegment, RaceExecutionItem } from '../types/editablePlan';
 import { getSportConfig } from '../config/sports';
 import { generateElevationProfile, generateHydrationStations } from './elevationGenerator';
 
@@ -43,6 +43,10 @@ function formatDuration(totalMin: number): string {
   const h = Math.floor(totalMin / 60);
   const m = Math.round(totalMin % 60);
   return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
 }
 
 function getTimeInterval(durationMin: number): number {
@@ -505,6 +509,7 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
   const output = competition.strategyOutput as StrategyOutput;
   const cfg = getSportConfig(competition.sport);
   const segments = editablePlan?.segments ?? buildSegments(competition, output);
+  const executionItems = editablePlan?.executionItems ?? [];
   const recs = editablePlan?.recommendations;
   const durationLabel = formatDuration(competition.raceData.expectedDurationMin);
   const distKm = competition.raceData.distanceUnit === 'miles'
@@ -541,6 +546,14 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
       <td class="td-caf" style="color:${hasCaf ? '#92400e' : '#ccc'};font-weight:${hasCaf ? '600' : '400'};">${s.caffeineNote || '—'}</td>
     </tr>`;
   }).join('');
+
+  const executionRows = executionItems.map((item, i) => `<tr style="background:${i % 2 !== 0 ? '#faf9fe' : '#fff'};">
+    <td class="td-time">${formatDuration(item.timeMin)}</td><td class="td-km">${escapeHtml(item.distanceLabel)}</td><td>${escapeHtml(item.title)}</td><td>${item.quantity}</td>
+    <td class="td-cho">${Math.round(item.carbsG)}g</td><td class="td-fluid">${Math.round(item.liquidMl)}mL</td><td class="td-sodium">${Math.round(item.sodiumMg)}mg</td><td>${Math.round(item.calories)} kcal</td>
+  </tr>`).join('');
+  const executionTotals = executionItems.reduce((totals, item) => ({ calories: totals.calories + item.calories, carbsG: totals.carbsG + item.carbsG, sodiumMg: totals.sodiumMg + item.sodiumMg, liquidMl: totals.liquidMl + item.liquidMl }), { calories: 0, carbsG: 0, sodiumMg: 0, liquidMl: 0 });
+  const executionPerHour = (value: number) => competition.raceData.expectedDurationMin > 0 ? value / (competition.raceData.expectedDurationMin / 60) : 0;
+  const executionSection = executionItems.length > 0 ? `<div class="section"><div class="section-title">Race Nutrition Timeline</div><table><thead><tr><th>Time</th><th>Distance / Station</th><th>Product or Meal</th><th>Qty</th><th>CHO</th><th>Fluid</th><th>Sodium</th><th>Calories</th></tr></thead><tbody>${executionRows}</tbody></table><div class="totals-row"><span class="totals-item">TOTALS:</span><span class="totals-item"><strong>${Math.round(executionTotals.calories)}</strong> kcal</span><span class="totals-item"><strong>${Math.round(executionTotals.carbsG)}g</strong> CHO</span><span class="totals-item"><strong>${Math.round(executionTotals.liquidMl)}mL</strong> fluid</span><span class="totals-item"><strong>${Math.round(executionTotals.sodiumMg)}mg</strong> sodium</span></div><div style="padding:6px 10px;font-size:9px;color:${C.muted};">Per hour: ${Math.round(executionPerHour(executionTotals.calories))} kcal/h · ${Math.round(executionPerHour(executionTotals.carbsG))}g CHO/h · ${Math.round(executionPerHour(executionTotals.liquidMl))}mL/h · ${Math.round(executionPerHour(executionTotals.sodiumMg))}mg sodium/h</div></div>` : '';
 
   // Pre-comp meals
   const mealsHtml = (meals: DayMeal[]) => meals.map(m =>
@@ -716,26 +729,7 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
     </div>
 
     <!-- RACE EXECUTION -->
-    <div class="section">
-      <div class="section-title">Race Execution Plan</div>
-      <table>
-        <thead><tr>
-          <th>Time</th><th>Distance</th>
-          <th style="color:${C.yellow};">CHO</th>
-          <th style="color:#93c5fd;">Fluid</th>
-          <th style="color:#5eead4;">Sodium</th>
-          <th style="color:rgba(255,255,255,.5);">Caffeine</th>
-        </tr></thead>
-        <tbody>${segRows}</tbody>
-      </table>
-      <div class="totals-row">
-        <span class="totals-item">TOTALS:</span>
-        <span class="totals-item"><strong>${output.carbs.totalCarbsG}g</strong> CHO</span>
-        <span class="totals-item"><strong style="color:#93c5fd;">${output.hydration.totalFluidL}L</strong> fluid</span>
-        <span class="totals-item"><strong style="color:#5eead4;">${output.hydration.totalSodiumMg}mg</strong> sodium</span>
-        ${output.caffeine.totalMg > 0 ? `<span class="totals-item"><strong style="color:#fde68a;">${output.caffeine.totalMg}mg</strong> caffeine</span>` : ''}
-      </div>
-    </div>
+    ${executionSection}
 
     <!-- CAFFEINE -->
     ${cafSection}
@@ -789,22 +783,16 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
 // ─── Cue Card ─────────────────────────────────────────────────────────────────
 async function buildCueCardHTML(competition: Competition, editablePlan?: EditablePlan): Promise<string> {
   const output = competition.strategyOutput as StrategyOutput;
-  const segments = editablePlan?.segments ?? buildSegments(competition, output);
+  const executionItems = editablePlan?.executionItems ?? [];
   const durationLabel = formatDuration(competition.raceData.expectedDurationMin);
 
   const iconURI = await toDataURI('/AppIcon.png');
 
-  const segRows = segments.map((s, i) => {
-    const hasCaf = !!s.caffeineNote;
-    return `<tr style="background:${hasCaf ? '#fffbeb' : i % 2 === 0 ? '#fff' : '#faf9fe'};">
-      <td style="font-family:'Krona One',sans-serif;font-size:10px;white-space:nowrap;padding:5px 8px;border-bottom:1px solid #f0eef8;">${formatDuration(s.timeMin)}</td>
-      <td style="font-size:9.5px;color:${C.muted};padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.distanceKm}km</td>
-      <td style="padding:5px 8px;border-bottom:1px solid #f0eef8;"><span style="background:${C.yellow};color:${C.purpleD};font-weight:700;font-size:9.5px;padding:1px 5px;border-radius:12px;">${s.choG}g</span></td>
-      <td style="font-size:10px;color:#1d4ed8;font-weight:600;padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.fluidMl}mL</td>
-      <td style="font-size:10px;color:#0d9488;font-weight:600;padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.sodiumMg}mg</td>
-      <td style="font-size:9px;font-weight:${hasCaf ? '700' : '400'};color:${hasCaf ? '#92400e' : '#ddd'};padding:5px 8px;border-bottom:1px solid #f0eef8;">${s.caffeineNote || ''}</td>
-    </tr>`;
-  }).join('');
+  const segRows = executionItems.map((item, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#faf9fe'};">
+      <td style="font-family:'Krona One',sans-serif;font-size:10px;white-space:nowrap;padding:5px 8px;border-bottom:1px solid #f0eef8;">${formatDuration(item.timeMin)}</td>
+      <td style="font-size:9.5px;color:${C.muted};padding:5px 8px;border-bottom:1px solid #f0eef8;">${escapeHtml(item.distanceLabel)}</td>
+      <td style="font-size:10px;font-weight:600;padding:5px 8px;border-bottom:1px solid #f0eef8;">${escapeHtml(item.title)} · ${item.quantity} ×</td>
+    </tr>`).join('');
 
   const warnings = output.risks.filter(r => r.level === 'critical');
   const iconImg = iconURI ? `<img src="${iconURI}" alt="" style="height:28px;width:28px;object-fit:contain;">` : '';
@@ -862,11 +850,8 @@ async function buildCueCardHTML(competition: Competition, editablePlan?: Editabl
         <thead>
           <tr style="background:${C.purpleD};">
             <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.5);">TIME</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.5);">KM</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:${C.yellow};">CHO</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:#93c5fd;">FLUID</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:#5eead4;">Na</th>
-            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.4);">CAFFEINE</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:rgba(255,255,255,.5);">KM / STATION</th>
+            <th style="padding:5px 8px;text-align:left;font-family:'Krona One',sans-serif;font-size:8px;letter-spacing:.08em;font-weight:400;color:${C.yellow};">SUPPLEMENT OR MEAL</th>
           </tr>
         </thead>
         <tbody>${segRows}</tbody>
