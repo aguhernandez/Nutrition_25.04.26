@@ -136,6 +136,10 @@ function getSourceSodium(assignment: RaceNutritionAssignment): number {
   return assignment.product?.sodium_mg ?? assignment.recipe?.sodium_mg ?? 0;
 }
 
+function getSourceLiquidMl(assignment: RaceNutritionAssignment): number {
+  return assignment.product?.serving_size_ml ?? 0;
+}
+
 function getSourceCaffeine(assignment: RaceNutritionAssignment): number {
   return assignment.product?.caffeine_mg ?? 0;
 }
@@ -304,6 +308,12 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     return !query || [recipe.name, recipe.name_es, recipe.name_en, recipe.category, recipe.description].filter(Boolean).join(' ').toLowerCase().includes(query);
   });
   const categoryOptions: Array<NutritionCategory | 'all'> = ['all', 'gel', 'drink', 'gummy', 'chew', 'bar', 'capsule', 'real_food', 'electrolyte_tablet'];
+  const totalCalories = assignments.reduce((sum, item) => sum + getSourceCalories(item) * item.quantity, 0);
+  const totalCarbs = assignments.reduce((sum, item) => sum + getSourceCarbs(item) * item.quantity, 0);
+  const totalSodium = assignments.reduce((sum, item) => sum + getSourceSodium(item) * item.quantity, 0);
+  const totalLiquid = assignments.reduce((sum, item) => sum + getSourceLiquidMl(item) * item.quantity, 0);
+  const raceDurationHours = competition.raceData.expectedDurationMin / 60;
+  const perHour = (total: number) => raceDurationHours > 0 ? total / raceDurationHours : 0;
 
   return (
     <div className="rounded-2xl print:hidden transition-colors" style={{ backgroundColor: cardBg, border: cardBorder, boxShadow: isDark ? 'none' : '0 2px 10px rgba(81,65,99,0.06)' }}>
@@ -368,6 +378,18 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
               })}
             </div>
           )}
+
+          <div className="rounded-2xl p-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}>
+            <div className="flex items-center justify-between mb-3"><div><h3 className={`font-body font-semibold ${textPrimary}`}>{isSpanish ? 'Totales del timeline' : 'Timeline totals'}</h3><p className={`text-xs mt-1 ${textMuted}`}>{isSpanish ? 'Totales finales y promedio por hora según la duración del Race Plan.' : 'Final totals and hourly average based on the Race Plan duration.'}</p></div><Clock3 className={`w-4 h-4 ${textMuted}`} /></div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                { label: isSpanish ? 'Calorías' : 'Calories', total: `${Math.round(totalCalories)} kcal`, hourly: `${Math.round(perHour(totalCalories))} kcal/h`, color: '#f97316' },
+                { label: isSpanish ? 'Carbohidratos' : 'Carbohydrates', total: `${Math.round(totalCarbs)} g`, hourly: `${Math.round(perHour(totalCarbs))} g/h`, color: '#eab308' },
+                { label: isSpanish ? 'Sodio' : 'Sodium', total: `${Math.round(totalSodium)} mg`, hourly: `${Math.round(perHour(totalSodium))} mg/h`, color: '#3b82f6' },
+                { label: isSpanish ? 'Líquido' : 'Liquid', total: `${Math.round(totalLiquid)} ml`, hourly: `${Math.round(perHour(totalLiquid))} ml/h`, color: '#14b8a6' },
+              ].map((metric) => <div key={metric.label} className="rounded-xl p-3" style={{ backgroundColor: `${metric.color}12`, border: `1px solid ${metric.color}33` }}><div className="text-xs font-semibold" style={{ color: metric.color }}>{metric.label}</div><div className={`text-lg font-bold mt-1 ${textPrimary}`}>{metric.total}</div><div className={`text-xs mt-1 ${textMuted}`}>{metric.hourly}</div></div>)}
+            </div>
+          </div>
         </div>
       )}
     </div>
