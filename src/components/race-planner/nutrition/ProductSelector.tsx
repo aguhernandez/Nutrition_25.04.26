@@ -71,8 +71,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
       if (!query.trim()) return true;
       const q = query.toLowerCase();
       return p.full_name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.notes.toLowerCase().includes(q);
-    })
-    .slice(0, 12);
+    });
 
   const handleSelect = (p: NutritionProduct) => {
     setSelected(p);

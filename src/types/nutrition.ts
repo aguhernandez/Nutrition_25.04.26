@@ -33,11 +33,25 @@ export interface SegmentFuelItem {
   type: FuelType;
 }
 
+export interface RaceNutritionRecipe {
+  id: string;
+  name: string;
+  name_es?: string;
+  name_en?: string;
+  category: string;
+  calories_kcal: number;
+  carbs_g: number;
+  sodium_mg: number;
+  description?: string;
+}
+
 export interface RaceNutritionAssignment {
   id: string;
   competition_id: string;
-  product_id: string;
-  product: NutritionProduct;
+  product_id: string | null;
+  recipe_id: string | null;
+  product: NutritionProduct | null;
+  recipe: RaceNutritionRecipe | null;
   timing_mode: 'time' | 'distance' | 'aid_station';
   timing_minutes: number | null;
   distance_marker: number | null;

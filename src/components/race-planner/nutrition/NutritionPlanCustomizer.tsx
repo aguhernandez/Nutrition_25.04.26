@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { NutritionCategory, NutritionProduct, RaceNutritionAssignment, RaceNutritionPlan } from '../../../types/nutrition';
+import type { NutritionCategory, NutritionProduct, RaceNutritionAssignment, RaceNutritionPlan, RaceNutritionRecipe } from '../../../types/nutrition';
 import type { Competition } from '../../../types/race';
 import { supabase } from '../../../lib/supabase';
 import { usePreferences } from '../../../lib/preferences';
@@ -39,6 +39,8 @@ interface Props {
 
 interface Draft {
   product: NutritionProduct | null;
+  recipe: RaceNutritionRecipe | null;
+  sourceMode: 'product' | 'recipe';
   timingMode: TimingMode;
   timingMinutes: string;
   distanceMarker: string;
@@ -82,6 +84,8 @@ const categoryColors: Record<NutritionCategory, string> = {
 
 const emptyDraft: Draft = {
   product: null,
+  recipe: null,
+  sourceMode: 'product',
   timingMode: 'time',
   timingMinutes: '45',
   distanceMarker: '',
@@ -109,12 +113,39 @@ function getSortValue(assignment: RaceNutritionAssignment): number {
   return 100000 + new Date(assignment.created_at).getTime() / 100000000;
 }
 
+function getSourceName(assignment: RaceNutritionAssignment): string {
+  return assignment.product?.full_name ?? assignment.recipe?.name ?? 'Nutrition source';
+}
+
+function getSourceCategory(assignment: RaceNutritionAssignment): NutritionCategory {
+  return assignment.product?.category ?? 'real_food';
+}
+
+function getSourceCalories(assignment: RaceNutritionAssignment): number {
+  return assignment.product?.calories_per_serving ?? assignment.recipe?.calories_kcal ?? 0;
+}
+
+function getSourceCarbs(assignment: RaceNutritionAssignment): number {
+  return assignment.product?.carbs_g ?? assignment.recipe?.carbs_g ?? 0;
+}
+
+function getSourceSodium(assignment: RaceNutritionAssignment): number {
+  return assignment.product?.sodium_mg ?? assignment.recipe?.sodium_mg ?? 0;
+}
+
+function getSourceCaffeine(assignment: RaceNutritionAssignment): number {
+  return assignment.product?.caffeine_mg ?? 0;
+}
+
 export default function NutritionPlanCustomizer({ competition, onChange }: Props) {
   const { theme, language } = usePreferences();
   const isDark = theme === 'dark';
   const isSpanish = language === 'es';
   const [collapsed, setCollapsed] = useState(false);
   const [products, setProducts] = useState<NutritionProduct[]>([]);
+  const [recipes, setRecipes] = useState<RaceNutritionRecipe[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<NutritionCategory | 'all'>('all');
+  const [recipeQuery, setRecipeQuery] = useState('');
   const [assignments, setAssignments] = useState<RaceNutritionAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -131,10 +162,15 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   useEffect(() => {
     let active = true;
     (async () => {
-      const { data, error } = await supabase.from('nutrition_products').select('*').order('brand').order('product_name');
-      if (error) console.error('[NutritionPlanCustomizer] products error:', error);
+      const [{ data: productData, error: productError }, { data: recipeData, error: recipeError }] = await Promise.all([
+        supabase.from('nutrition_products').select('*').order('brand').order('product_name'),
+        supabase.from('recipes').select('id, name, name_es, name_en, category, calories_kcal, carbs_g, sodium_mg, description').eq('is_public', true).order('name'),
+      ]);
+      if (productError) console.error('[NutritionPlanCustomizer] products error:', productError);
+      if (recipeError) console.error('[NutritionPlanCustomizer] recipes error:', recipeError);
       if (active) {
-        setProducts((data as NutritionProduct[]) ?? []);
+        setProducts((productData as NutritionProduct[]) ?? []);
+        setRecipes((recipeData as RaceNutritionRecipe[]) ?? []);
         setLoading(false);
       }
     })();
@@ -154,16 +190,16 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   }, [competition.id]);
 
   useEffect(() => {
-    const totalCarbs = assignments.reduce((sum, item) => sum + item.product.carbs_g * item.quantity, 0);
-    const totalSodium = assignments.reduce((sum, item) => sum + item.product.sodium_mg * item.quantity, 0);
-    const totalCaffeine = assignments.reduce((sum, item) => sum + item.product.caffeine_mg * item.quantity, 0);
+    const totalCarbs = assignments.reduce((sum, item) => sum + getSourceCarbs(item) * item.quantity, 0);
+    const totalSodium = assignments.reduce((sum, item) => sum + getSourceSodium(item) * item.quantity, 0);
+    const totalCaffeine = assignments.reduce((sum, item) => sum + getSourceCaffeine(item) * item.quantity, 0);
     onChange({
       primaryFuelType: 'gel',
       segmentFueling: {},
       totalCarbsG: totalCarbs,
       totalSodiumMg: totalSodium,
       totalCaffeineM: totalCaffeine,
-      notes: assignments.map((item) => `${getMomentLabel(item, competition.raceData.distanceUnit)}: ${item.product.full_name}`).join(' · '),
+      notes: assignments.map((item) => `${getMomentLabel(item, competition.raceData.distanceUnit)}: ${getSourceName(item)}`).join(' · '),
       timeline: assignments,
     });
   }, [assignments, competition.raceData.distanceUnit, onChange]);
@@ -193,6 +229,8 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     setEditingId(item.id);
     setDraft({
       product: item.product,
+      recipe: item.recipe,
+      sourceMode: item.recipe ? 'recipe' : 'product',
       timingMode: item.timing_mode,
       timingMinutes: item.timing_minutes === null ? '' : String(item.timing_minutes),
       distanceMarker: item.distance_marker === null ? '' : String(item.distance_marker),
@@ -211,7 +249,8 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   };
 
   const saveAssignment = async () => {
-    if (!draft.product) return;
+    if (draft.sourceMode === 'product' && !draft.product) return;
+    if (draft.sourceMode === 'recipe' && !draft.recipe) return;
     if (!competition.id) {
       setMessage(isSpanish ? 'Guarda primero el plan de carrera para añadir momentos.' : 'Save the race plan first to add timeline moments.');
       return;
@@ -224,7 +263,8 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
 
     setSaving(true);
     const input = {
-      productId: draft.product.id,
+      productId: draft.sourceMode === 'product' ? draft.product?.id : null,
+      recipeId: draft.sourceMode === 'recipe' ? draft.recipe?.id : null,
       timingMode: draft.timingMode,
       timingMinutes: draft.timingMinutes ? Number(draft.timingMinutes) : null,
       distanceMarker: draft.distanceMarker ? Number(draft.distanceMarker) : null,
@@ -256,6 +296,11 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   const textSecondary = isDark ? 'text-gray-400' : 'text-gray-500';
   const innerBg = isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb';
   const inputStyle = { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#fff', border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid #d1d5db', color: isDark ? '#f3f4f6' : '#1f2937' };
+  const visibleRecipes = recipes.filter((recipe) => {
+    const query = recipeQuery.trim().toLowerCase();
+    return !query || [recipe.name, recipe.name_es, recipe.name_en, recipe.category, recipe.description].filter(Boolean).join(' ').toLowerCase().includes(query);
+  });
+  const categoryOptions: Array<NutritionCategory | 'all'> = ['all', 'gel', 'drink', 'gummy', 'chew', 'bar', 'capsule', 'real_food', 'electrolyte_tablet'];
 
   return (
     <div className="rounded-2xl print:hidden transition-colors" style={{ backgroundColor: cardBg, border: cardBorder, boxShadow: isDark ? 'none' : '0 2px 10px rgba(81,65,99,0.06)' }}>
@@ -281,8 +326,15 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
           {showForm && (
             <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}>
               <div className="flex items-center justify-between"><h3 className={`font-body font-semibold ${textPrimary}`}>{editingId ? (isSpanish ? 'Editar asignación' : 'Edit assignment') : (isSpanish ? 'Añadir suplemento al timeline' : 'Add supplement to timeline')}</h3><button onClick={closeForm} className={textMuted}><X className="w-4 h-4" /></button></div>
-              <ProductSelector products={products} selectedId={draft.product?.id} placeholder={loading ? 'Loading products...' : (isSpanish ? 'Buscar suplementos por nombre o marca...' : 'Search supplements by name or brand...')} onSelect={(product) => setDraft((current) => ({ ...current, product }))} />
-              {draft.product && <div className="flex flex-wrap gap-3 text-xs" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}><span>{draft.product.calories_per_serving} kcal</span><span>{draft.product.carbs_g}g carbs</span><span>{draft.product.sodium_mg}mg Na</span>{draft.product.caffeine_mg > 0 && <span className="text-amber-500">{draft.product.caffeine_mg}mg caffeine</span>}</div>}
+              <div className="flex gap-2">
+                {(['product', 'recipe'] as const).map((mode) => <button key={mode} onClick={() => setDraft((current) => ({ ...current, sourceMode: mode, product: mode === 'product' ? current.product : null, recipe: mode === 'recipe' ? current.recipe : null }))} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ backgroundColor: draft.sourceMode === mode ? '#514163' : 'transparent', color: draft.sourceMode === mode ? '#fff' : textSecondary, border: `1px solid ${draft.sourceMode === mode ? '#514163' : '#d1d5db'}` }}>{mode === 'product' ? (isSpanish ? 'Suplementos' : 'Supplements') : (isSpanish ? 'Recetas' : 'Recipes')}</button>)}
+              </div>
+              {draft.sourceMode === 'product' ? <>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">{categoryOptions.map((category) => <button key={category} onClick={() => setCategoryFilter(category)} className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: categoryFilter === category ? '#facc15' : 'transparent', color: categoryFilter === category ? '#713f12' : textSecondary, border: `1px solid ${categoryFilter === category ? '#facc15' : '#d1d5db'}` }}>{category === 'all' ? (isSpanish ? 'Todos' : 'All') : categoryLabels[category]}</button>)}</div>
+                <ProductSelector products={products} categories={categoryFilter === 'all' ? undefined : [categoryFilter]} selectedId={draft.product?.id} placeholder={loading ? 'Loading products...' : (isSpanish ? 'Buscar por nombre o marca, o explora la lista...' : 'Search by name or brand, or browse the list...')} onSelect={(product) => setDraft((current) => ({ ...current, product }))} />
+                {draft.product && <div className="flex flex-wrap gap-3 text-xs" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}><span>{draft.product.calories_per_serving} kcal</span><span>{draft.product.carbs_g}g carbs</span><span>{draft.product.sodium_mg}mg Na</span>{draft.product.caffeine_mg > 0 && <span className="text-amber-500">{draft.product.caffeine_mg}mg caffeine</span>}</div>}
+              </> : <div className="space-y-2"><input value={recipeQuery} onChange={(e) => setRecipeQuery(e.target.value)} placeholder={isSpanish ? 'Buscar recetas o explora la lista...' : 'Search recipes or browse the list...'} className="w-full rounded-xl px-3 py-2.5 text-sm" style={inputStyle} /><div className="max-h-56 overflow-y-auto rounded-xl" style={{ border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb' }}>{visibleRecipes.map((recipe) => <button key={recipe.id} onClick={() => setDraft((current) => ({ ...current, recipe }))} className="w-full text-left px-3 py-2.5 border-b last:border-b-0" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', backgroundColor: draft.recipe?.id === recipe.id ? 'rgba(250,204,21,0.15)' : 'transparent' }}><div className={`text-sm font-semibold ${textPrimary}`}>{isSpanish ? recipe.name_es || recipe.name : recipe.name_en || recipe.name}</div><div className={`text-xs ${textMuted}`}>{recipe.category} · {recipe.calories_kcal} kcal · {recipe.carbs_g}g carbs</div></button>)}{visibleRecipes.length === 0 && <div className={`p-4 text-sm ${textMuted}`}>{isSpanish ? 'No hay recetas públicas disponibles.' : 'No public recipes available.'}</div>}</div></div>}
+              {draft.sourceMode === 'recipe' && draft.recipe && <div className="flex flex-wrap gap-3 text-xs" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}><span>{draft.recipe.calories_kcal} kcal</span><span>{draft.recipe.carbs_g}g carbs</span><span>{draft.recipe.sodium_mg}mg Na</span></div>}
               <div className="grid grid-cols-3 gap-2">
                 {(['time', 'distance', 'aid_station'] as TimingMode[]).map((mode) => {
                   const Icon = mode === 'time' ? Clock3 : mode === 'distance' ? Route : MapPin;
@@ -297,7 +349,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                 <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Cantidad' : 'Quantity'}<input type="number" min="0.25" step="0.25" value={draft.quantity} onChange={(e) => setDraft((current) => ({ ...current, quantity: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
               </div>
               <label className={`block text-xs ${textSecondary}`}>{isSpanish ? 'Nota personalizada' : 'Personalized note'}<input value={draft.note} onChange={(e) => setDraft((current) => ({ ...current, note: e.target.value }))} placeholder={isSpanish ? 'Tomar con agua' : 'Take with water'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
-              <div className="flex justify-end gap-2"><button onClick={closeForm} className="px-4 py-2 rounded-xl text-sm" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}>{isSpanish ? 'Cancelar' : 'Cancel'}</button><button onClick={saveAssignment} disabled={saving || !draft.product} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-[#514163] text-sm font-bold disabled:opacity-50"><Check className="w-4 h-4" />{saving ? (isSpanish ? 'Guardando...' : 'Saving...') : (isSpanish ? 'Guardar momento' : 'Save moment')}</button></div>
+              <div className="flex justify-end gap-2"><button onClick={closeForm} className="px-4 py-2 rounded-xl text-sm" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}>{isSpanish ? 'Cancelar' : 'Cancel'}</button><button onClick={saveAssignment} disabled={saving || (draft.sourceMode === 'product' ? !draft.product : !draft.recipe)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-[#514163] text-sm font-bold disabled:opacity-50"><Check className="w-4 h-4" />{saving ? (isSpanish ? 'Guardando...' : 'Saving...') : (isSpanish ? 'Guardar momento' : 'Save moment')}</button></div>
             </div>
           )}
 
@@ -309,7 +361,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
             <div className="relative pl-7 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-yellow-300">
               {grouped.map((group) => {
                 const GroupIcon = group.mode === 'time' ? Clock3 : group.mode === 'distance' ? Route : MapPin;
-                return <div key={group.key} className="relative"><div className="absolute -left-7 top-2 w-5 h-5 rounded-full bg-yellow-400 border-4 border-white dark:border-[#1e1a2e] flex items-center justify-center"><GroupIcon className="w-2.5 h-2.5 text-[#514163]" /></div><div className="rounded-2xl p-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}><div className={`font-body font-bold text-sm mb-3 ${textPrimary}`}>{group.label}</div><div className="space-y-2">{group.items.map((item) => { const category = item.product.category as NutritionCategory; const Icon = categoryIcons[category]; const color = categoryColors[category]; return <div key={item.id} className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: cardBg, border: `1px solid ${color}55` }}><div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}18`, color }}><Icon className="w-4 h-4" /></div><div className="min-w-0 flex-1"><div className={`font-body font-semibold text-sm ${textPrimary}`}>{item.quantity} × {item.product.full_name}</div><div className={`text-xs mt-0.5 ${textSecondary}`}>{categoryLabels[category]} · {item.product.calories_per_serving} kcal · {item.product.carbs_g * item.quantity}g carbs · {item.product.sodium_mg * item.quantity}mg Na{item.product.caffeine_mg > 0 && ` · ${item.product.caffeine_mg * item.quantity}mg caffeine`}</div>{item.note && <div className={`text-xs mt-1 italic ${textMuted}`}>{item.note}</div>}</div><div className="flex gap-1"><button onClick={() => startEdit(item)} className={`p-1.5 rounded-lg ${textMuted}`} title={isSpanish ? 'Editar' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => removeAssignment(item.id)} className="p-1.5 rounded-lg text-red-400" title={isSpanish ? 'Eliminar' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button></div></div>; })}</div></div></div>;
+                return <div key={group.key} className="relative"><div className="absolute -left-7 top-2 w-5 h-5 rounded-full bg-yellow-400 border-4 border-white dark:border-[#1e1a2e] flex items-center justify-center"><GroupIcon className="w-2.5 h-2.5 text-[#514163]" /></div><div className="rounded-2xl p-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}><div className={`font-body font-bold text-sm mb-3 ${textPrimary}`}>{group.label}</div><div className="space-y-2">{group.items.map((item) => { const category = getSourceCategory(item); const Icon = categoryIcons[category]; const color = categoryColors[category]; return <div key={item.id} className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: cardBg, border: `1px solid ${color}55` }}><div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}18`, color }}><Icon className="w-4 h-4" /></div><div className="min-w-0 flex-1"><div className={`font-body font-semibold text-sm ${textPrimary}`}>{item.quantity} × {getSourceName(item)}</div><div className={`text-xs mt-0.5 ${textSecondary}`}>{categoryLabels[category]} · {getSourceCalories(item)} kcal · {getSourceCarbs(item) * item.quantity}g carbs · {getSourceSodium(item) * item.quantity}mg Na{getSourceCaffeine(item) > 0 && ` · ${getSourceCaffeine(item) * item.quantity}mg caffeine`}</div>{item.note && <div className={`text-xs mt-1 italic ${textMuted}`}>{item.note}</div>}</div><div className="flex gap-1"><button onClick={() => startEdit(item)} className={`p-1.5 rounded-lg ${textMuted}`} title={isSpanish ? 'Editar' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => removeAssignment(item.id)} className="p-1.5 rounded-lg text-red-400" title={isSpanish ? 'Eliminar' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button></div></div>; })}</div></div></div>;
               })}
             </div>
           )}
