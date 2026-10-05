@@ -105,7 +105,7 @@ function getMomentLabel(assignment: RaceNutritionAssignment, distanceUnit: strin
   if (assignment.timing_mode === 'time') return formatMinutes(assignment.timing_minutes);
   if (assignment.timing_mode === 'distance') {
     const marker = `${assignment.distance_marker} ${distanceUnit}`;
-    return assignment.timing_minutes === null ? marker : `${marker} · ≈${formatMinutes(assignment.timing_minutes)}`;
+    return assignment.timing_minutes === null ? marker : `${marker} · ${formatMinutes(assignment.timing_minutes)}`;
   }
   return assignment.aid_station_name || 'Aid station';
 }
@@ -260,19 +260,16 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     }
     const quantity = Number(draft.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) return;
-    if (draft.timingMode === 'time' && (!draft.timingMinutes || Number(draft.timingMinutes) < 0)) return;
-    if (draft.timingMode === 'distance' && (!draft.distanceMarker || Number(draft.distanceMarker) < 0)) return;
+    if (!draft.timingMinutes || Number(draft.timingMinutes) < 0) return;
+    if (draft.timingMode === 'distance' && (!draft.distanceMarker || Number(draft.distanceMarker) < 0 || Number(draft.distanceMarker) > competition.raceData.distance)) return;
     if (draft.timingMode === 'aid_station' && !draft.aidStationName.trim()) return;
 
     setSaving(true);
-    const distanceTimingMinutes = draft.timingMode === 'distance' && draft.distanceMarker
-      ? Math.round((Number(draft.distanceMarker) / competition.raceData.distance) * competition.raceData.expectedDurationMin)
-      : null;
     const input = {
       productId: draft.sourceMode === 'product' ? draft.product?.id : null,
       recipeId: draft.sourceMode === 'recipe' ? draft.recipe?.id : null,
       timingMode: draft.timingMode,
-      timingMinutes: draft.timingMode === 'distance' ? distanceTimingMinutes : (draft.timingMinutes ? Number(draft.timingMinutes) : null),
+      timingMinutes: draft.timingMinutes ? Number(draft.timingMinutes) : null,
       distanceMarker: draft.distanceMarker ? Number(draft.distanceMarker) : null,
       aidStationName: draft.aidStationName,
       quantity,
@@ -349,9 +346,9 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                 })}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {draft.timingMode === 'time' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Minutos desde la salida' : 'Minutes from start'}<input type="number" min="0" value={draft.timingMinutes} onChange={(e) => setDraft((current) => ({ ...current, timingMinutes: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
-                {draft.timingMode === 'distance' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? `Marcador (${competition.raceData.distanceUnit})` : `Marker (${competition.raceData.distanceUnit})`}<input type="number" min="0" max={competition.raceData.distance} step="0.1" value={draft.distanceMarker} onChange={(e) => setDraft((current) => ({ ...current, distanceMarker: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} />{draft.distanceMarker && <span className={`block mt-1 ${textMuted}`}>{isSpanish ? 'Paso estimado' : 'Estimated race time'}: ≈{formatMinutes(Math.round((Number(draft.distanceMarker) / competition.raceData.distance) * competition.raceData.expectedDurationMin))}</span>}</label>}
-                {draft.timingMode === 'aid_station' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Nombre del punto' : 'Checkpoint name'}<input value={draft.aidStationName} onChange={(e) => setDraft((current) => ({ ...current, aidStationName: e.target.value }))} placeholder={isSpanish ? 'Avituallamiento 1' : 'Aid station 1'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
+                <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Tiempo manual desde la salida (minutos)' : 'Manual time from start (minutes)'}<input type="number" min="0" value={draft.timingMinutes} onChange={(e) => setDraft((current) => ({ ...current, timingMinutes: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
+                {draft.timingMode === 'distance' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? `Marcador (${competition.raceData.distanceUnit})` : `Marker (${competition.raceData.distanceUnit})`}<input type="number" min="0" max={competition.raceData.distance} step="0.1" value={draft.distanceMarker} onChange={(e) => setDraft((current) => ({ ...current, distanceMarker: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
+                {draft.timingMode === 'aid_station' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Nombre del puesto' : 'Checkpoint name'}<input value={draft.aidStationName} onChange={(e) => setDraft((current) => ({ ...current, aidStationName: e.target.value }))} placeholder={isSpanish ? 'Avituallamiento 1' : 'Aid station 1'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
                 <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Cantidad' : 'Quantity'}<input type="number" min="0.25" step="0.25" value={draft.quantity} onChange={(e) => setDraft((current) => ({ ...current, quantity: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
               </div>
               <label className={`block text-xs ${textSecondary}`}>{isSpanish ? 'Nota personalizada' : 'Personalized note'}<input value={draft.note} onChange={(e) => setDraft((current) => ({ ...current, note: e.target.value }))} placeholder={isSpanish ? 'Tomar con agua' : 'Take with water'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
