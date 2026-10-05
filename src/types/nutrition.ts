@@ -1,4 +1,4 @@
-export type NutritionCategory = 'drink' | 'gel' | 'chew' | 'bar' | 'electrolyte_tablet';
+export type NutritionCategory = 'drink' | 'gel' | 'chew' | 'bar' | 'electrolyte_tablet' | 'gummy' | 'capsule' | 'real_food';
 
 export interface NutritionProduct {
   id: string;
@@ -33,6 +33,21 @@ export interface SegmentFuelItem {
   type: FuelType;
 }
 
+export interface RaceNutritionAssignment {
+  id: string;
+  competition_id: string;
+  product_id: string;
+  product: NutritionProduct;
+  timing_mode: 'time' | 'distance' | 'aid_station';
+  timing_minutes: number | null;
+  distance_marker: number | null;
+  aid_station_name: string | null;
+  quantity: number;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RaceNutritionPlan {
   primaryFuelType: FuelType;
   primaryDrinkProductId?: string;
@@ -43,4 +58,5 @@ export interface RaceNutritionPlan {
   totalSodiumMg: number;
   totalCaffeineM: number;
   notes: string;
+  timeline?: RaceNutritionAssignment[];
 }

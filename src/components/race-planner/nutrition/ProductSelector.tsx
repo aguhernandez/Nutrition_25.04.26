@@ -17,6 +17,9 @@ const categoryLabels: Record<NutritionCategory, string> = {
   chew: 'Energy Chew',
   bar: 'Energy Bar',
   electrolyte_tablet: 'Electrolyte',
+  gummy: 'Gummies',
+  capsule: 'Capsule / Pill',
+  real_food: 'Real Food',
 };
 
 const categoryColors: Record<NutritionCategory, string> = {
@@ -25,6 +28,9 @@ const categoryColors: Record<NutritionCategory, string> = {
   chew: 'text-orange-400 bg-orange-400/10',
   bar: 'text-emerald-400 bg-emerald-400/10',
   electrolyte_tablet: 'text-teal-400 bg-teal-400/10',
+  gummy: 'text-orange-400 bg-orange-400/10',
+  capsule: 'text-pink-400 bg-pink-400/10',
+  real_food: 'text-emerald-400 bg-emerald-400/10',
 };
 
 const priceColors: Record<string, string> = {

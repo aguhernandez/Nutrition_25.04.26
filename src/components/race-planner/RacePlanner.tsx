@@ -228,6 +228,7 @@ export default function RacePlanner({
       if (error) console.error('Save race error:', error);
       if (data?.id) {
         setSavedId(data.id);
+        setCompetition((current) => current ? { ...current, id: data.id } : current);
         if (raceTags.length > 0) {
           await setTagsForCompetition(data.id, raceTags.map((t) => t.id));
         }
