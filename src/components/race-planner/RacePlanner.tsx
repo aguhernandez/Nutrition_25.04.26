@@ -322,6 +322,11 @@ export default function RacePlanner({
             catalogEntry={catalogEntry}
             onSave={handleSave}
             onNewRace={handleNewRace}
+            hideSendToHub={isCoach}
+            onSendToHubResult={(status) => {
+              setPushResult(status);
+              setTimeout(() => setPushResult(null), 4000);
+            }}
           />
           {!savedId && (
             <div className="mt-4 mb-2">
@@ -375,6 +380,34 @@ export default function RacePlanner({
                   )}
                 </button>
               )}
+            </div>
+          )}
+
+          {!isCoach && pushResult && (
+            <div
+              className="mt-4 mb-6 rounded-2xl p-5 flex items-center gap-3"
+              style={{
+                backgroundColor: pushResult === 'success' ? '#f0fdf4' : '#fef2f2',
+                border: `2px solid ${pushResult === 'success' ? '#bbf7d0' : '#fecaca'}`,
+              }}
+            >
+              {pushResult === 'success' ? (
+                <CheckCircle2 className="w-6 h-6 flex-shrink-0" style={{ color: '#16a34a' }} />
+              ) : (
+                <AlertCircle className="w-6 h-6 flex-shrink-0" style={{ color: '#dc2626' }} />
+              )}
+              <div>
+                <p className="font-body font-semibold text-sm" style={{ color: pushResult === 'success' ? '#14532d' : '#991b1b' }}>
+                  {pushResult === 'success'
+                    ? 'Carrera enviada a tu calendario'
+                    : 'Error al enviar. Intenta de nuevo.'}
+                </p>
+                {pushResult === 'success' && (
+                  <p className="font-body text-xs mt-0.5" style={{ color: '#15803d' }}>
+                    La carrera aparecera en tu calendario del Hub.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

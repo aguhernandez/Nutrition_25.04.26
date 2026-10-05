@@ -37,6 +37,8 @@ interface Props {
   catalogEntry?: RaceCatalogEntry;
   onSave: () => Promise<void>;
   onNewRace: () => void;
+  hideSendToHub?: boolean;
+  onSendToHubResult?: (status: 'success' | 'error') => void;
 }
 
 function StatCard({ label, value, unit, color, isDark }: { label: string; value: string | number; unit?: string; color: string; isDark: boolean }) {
@@ -161,7 +163,7 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
 
 type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
-export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace }: Props) {
+export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult }: Props) {
   const { theme, language } = usePreferences();
   const { user, profile } = useAuth();
   const isDark = theme === 'dark';
@@ -324,9 +326,11 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
         plan_version: '2.0',
       });
       setHubPushStatus('success');
+      onSendToHubResult?.('success');
     } catch (err) {
       setHubPushError(err instanceof Error ? err.message : 'Error sending to Hub');
       setHubPushStatus('error');
+      onSendToHubResult?.('error');
     }
   };
 
@@ -352,32 +356,34 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={handleSendToHub}
-              disabled={hubPushStatus === 'pushing' || hubPushStatus === 'success'}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg ${
-                hubPushStatus === 'success'
-                  ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-none'
-                  : hubPushStatus === 'error'
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-none hover:bg-red-500/30'
-                  : 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-blue-500/20 hover:opacity-90'
-              }`}
-            >
-              {hubPushStatus === 'pushing' ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
-              ) : hubPushStatus === 'success' ? (
-                <><CheckCircle className="w-4 h-4" /> Sent to Hub!</>
-              ) : hubPushStatus === 'error' ? (
-                <><AlertCircle className="w-4 h-4" /> Retry Send</>
-              ) : (
-                <><Send className="w-4 h-4" /> {language === 'es' ? 'Enviar al Hub' : 'Send to Hub'}</>
+          {!hideSendToHub && (
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleSendToHub}
+                disabled={hubPushStatus === 'pushing' || hubPushStatus === 'success'}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-lg ${
+                  hubPushStatus === 'success'
+                    ? 'bg-green-500/20 text-green-400 border border-green-500/30 shadow-none'
+                    : hubPushStatus === 'error'
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-none hover:bg-red-500/30'
+                    : 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-blue-500/20 hover:opacity-90'
+                }`}
+              >
+                {hubPushStatus === 'pushing' ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</>
+                ) : hubPushStatus === 'success' ? (
+                  <><CheckCircle className="w-4 h-4" /> Sent to Hub!</>
+                ) : hubPushStatus === 'error' ? (
+                  <><AlertCircle className="w-4 h-4" /> Retry Send</>
+                ) : (
+                  <><Send className="w-4 h-4" /> {language === 'es' ? 'Enviar al Hub' : 'Send to Hub'}</>
+                )}
+              </button>
+              {hubPushStatus === 'error' && hubPushError && (
+                <p className="text-xs text-red-400 px-1">{hubPushError}</p>
               )}
-            </button>
-            {hubPushStatus === 'error' && hubPushError && (
-              <p className="text-xs text-red-400 px-1">{hubPushError}</p>
-            )}
-          </div>
+            </div>
+          )}
           <button
             onClick={handleFullReport}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${btnSecondary}`}
