@@ -21,6 +21,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [history, setHistory] = useState<ElevationPoint[][]>([]);
 
   const sorted = useMemo(() => [...points].sort((a, b) => a.km - b.km), [points]);
@@ -54,10 +55,16 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
     };
   }, []);
 
+  const handleClick = (index: number) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIndex(selectedIndex === index ? null : index);
+  };
+
   const handleMouseDown = (index: number) => (e: React.MouseEvent) => {
     e.stopPropagation();
     pushHistory();
     setDragIndex(index);
+    setSelectedIndex(null);
   };
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -78,6 +85,8 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
 
   const handleMouseUp = () => setDragIndex(null);
   const handleMouseLeave = () => { setDragIndex(null); setHoverIndex(null); };
+
+  const handleSvgClick = () => setSelectedIndex(null);
 
   const addPoint = () => {
     pushHistory();
@@ -182,6 +191,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
+        onClick={handleSvgClick}
       >
         <defs>
           <linearGradient id="editElevFill" x1="0" y1="0" x2="0" y2="1">
@@ -205,41 +215,40 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
         {areaPath && <path d={areaPath} fill="url(#editElevFill)" />}
         {linePath && <polyline points={sorted.map((p) => `${toX(p.km).toFixed(1)},${toY(p.elevationM).toFixed(1)}`).join(' ')} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinejoin="round" />}
 
-        {sorted.map((p, i) => (
-          <g key={i}>
-            <circle
-              cx={toX(p.km)}
-              cy={toY(p.elevationM)}
-              r={dragIndex === i || hoverIndex === i ? 7 : 5}
-              fill={dragIndex === i ? '#f59e0b' : hoverIndex === i ? '#60a5fa' : '#3b82f6'}
-              fillOpacity={0.9}
-              stroke={isDark ? '#1f2937' : '#ffffff'}
-              strokeWidth="2"
-              style={{ cursor: 'grab' }}
-              onMouseDown={handleMouseDown(i)}
-            />
-            {(hoverIndex === i || dragIndex === i) && (
-              <g>
-                <rect x={toX(p.km) + 8} y={toY(p.elevationM) - 22} width="84" height="28" rx="6" fill={isDark ? '#111827' : '#ffffff'} fillOpacity="0.97" stroke={isDark ? '#374151' : '#e5e7eb'} strokeWidth="1" />
-                <text x={toX(p.km) + 50} y={toY(p.elevationM) - 11} textAnchor="middle" fontSize="11" fill={isDark ? '#e5e7eb' : '#1f2937'} fontWeight="600">{p.km.toFixed(1)} km</text>
-                <text x={toX(p.km) + 50} y={toY(p.elevationM) + 2} textAnchor="middle" fontSize="11" fill="#60a5fa">{p.elevationM}m</text>
-              </g>
-            )}
-            {sorted.length > 2 && (
-              <text
-                x={toX(p.km)}
-                y={toY(p.elevationM) - 14}
-                textAnchor="middle"
-                fontSize="9"
-                fill="#ef4444"
-                style={{ cursor: 'pointer', opacity: hoverIndex === i ? 1 : 0 }}
-                onClick={() => deletePoint(i)}
-              >
-                <tspan style={{ fontWeight: 700 }}>×</tspan>
-              </text>
-            )}
-          </g>
-        ))}
+        {sorted.map((p, i) => {
+          const isSelected = selectedIndex === i;
+          const isHovered = hoverIndex === i || dragIndex === i;
+          const showTooltip = isHovered || isSelected;
+          return (
+            <g key={i}>
+              <circle
+                cx={toX(p.km)}
+                cy={toY(p.elevationM)}
+                r={dragIndex === i ? 8 : isHovered || isSelected ? 7 : 5}
+                fill={dragIndex === i ? '#f59e0b' : isSelected ? '#ef4444' : isHovered ? '#60a5fa' : '#3b82f6'}
+                fillOpacity={0.9}
+                stroke={isDark ? '#1f2937' : '#ffffff'}
+                strokeWidth="2"
+                style={{ cursor: 'grab' }}
+                onMouseDown={handleMouseDown(i)}
+                onClick={handleClick(i)}
+              />
+              {showTooltip && (
+                <g>
+                  <rect x={toX(p.km) + 8} y={toY(p.elevationM) - 22} width="84" height="28" rx="6" fill={isDark ? '#111827' : '#ffffff'} fillOpacity="0.97" stroke={isDark ? '#374151' : '#e5e7eb'} strokeWidth="1" />
+                  <text x={toX(p.km) + 50} y={toY(p.elevationM) - 11} textAnchor="middle" fontSize="11" fill={isDark ? '#e5e7eb' : '#1f2937'} fontWeight="600">{p.km.toFixed(1)} km</text>
+                  <text x={toX(p.km) + 50} y={toY(p.elevationM) + 2} textAnchor="middle" fontSize="11" fill="#60a5fa">{p.elevationM}m</text>
+                </g>
+              )}
+              {isSelected && sorted.length > 2 && (
+                <g style={{ cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); deletePoint(i); setSelectedIndex(null); }}>
+                  <circle cx={toX(p.km)} cy={toY(p.elevationM) - 20} r="9" fill="#ef4444" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="1.5" />
+                  <text x={toX(p.km)} y={toY(p.elevationM) - 16} textAnchor="middle" fontSize="12" fill="#ffffff" fontWeight="700">×</text>
+                </g>
+              )}
+            </g>
+          );
+        })}
 
         <text x={PAD.left + PLOT_W / 2} y={H - 2} textAnchor="middle" fontSize="11" fill={axisLabelFill}>Distance (km)</text>
         <text x={14} y={PAD.top + PLOT_H / 2} textAnchor="middle" fontSize="11" fill={axisLabelFill} transform={`rotate(-90, 14, ${PAD.top + PLOT_H / 2})`}>Elevation (m)</text>
@@ -247,7 +256,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
 
       <div className="flex items-center gap-1 text-xs text-red-400">
         <Trash2 className="w-3 h-3" />
-        Hover a point and click the × to delete it. Drag any dot to reposition.
+        Click a point to select it, then click the red × to delete. Drag any dot to reposition.
       </div>
     </div>
   );

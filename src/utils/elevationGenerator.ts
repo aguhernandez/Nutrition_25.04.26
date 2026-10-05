@@ -14,7 +14,7 @@ export function generateElevationProfile(
   seed = 42
 ): ElevationPoint[] {
   const rand = seededRandom(seed);
-  const points = Math.min(200, Math.max(40, Math.round(distanceKm * 2)));
+  const points = 30;
   const step = distanceKm / (points - 1);
 
   const raw: number[] = [0];
