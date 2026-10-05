@@ -233,7 +233,7 @@ export function useSatelliteAuth() {
     localStorage.removeItem(SESSION_TOKEN_KEY);
     setUser(null);
     setBlocked(false);
-    window.location.href = HUB_URL;
+    window.location.replace('/');
   };
 
   const hasToken = user !== null;

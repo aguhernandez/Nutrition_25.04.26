@@ -112,7 +112,7 @@ function AppShell() {
             style={{ backgroundColor: '#f59e0b', color: '#000' }}
           >
             <LogOut className="w-4 h-4" />
-            {language === 'es' ? 'Volver al Hub' : 'Back to Hub'}
+            {language === 'es' ? 'Volver al inicio' : 'Back to Home'}
           </button>
         </div>
       </div>

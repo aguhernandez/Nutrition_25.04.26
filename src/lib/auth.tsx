@@ -183,9 +183,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setDevUser(null);
       setProfileState(null);
       setDevHasToken(false);
+      syncedRef.current = null;
+      window.location.replace('/');
       return;
     }
     setProfileState(null);
+    syncedRef.current = null;
     hubLogout();
   };
 
