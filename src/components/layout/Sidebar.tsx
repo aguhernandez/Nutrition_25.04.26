@@ -48,15 +48,12 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { view: 'planner', label_es: 'Planificador', label_en: 'Race Planner', icon: Home, roles: ['admin', 'coach', 'athlete'] },
-  { view: 'saved', label_es: 'Carreras Guardadas', label_en: 'Saved Races', icon: BookOpen, roles: ['admin', 'coach', 'athlete'] },
   {
     view: 'nutrition',
     label_es: 'Nutrición',
     label_en: 'Nutrition',
     icon: Apple,
     roles: ['admin', 'coach', 'athlete'],
-    separator: true,
     children: [
       { view: 'nutrition-dashboard', label_es: 'Dashboard', label_en: 'Dashboard', icon: BarChart2, roles: ['admin', 'coach', 'athlete'] },
       { view: 'nutrition-recipes', label_es: 'Recetas', label_en: 'Recipes', icon: BookOpen, roles: ['admin', 'coach', 'athlete'] },
@@ -66,6 +63,8 @@ const NAV_ITEMS: NavItem[] = [
       { view: 'nutrition-food-database', label_es: 'Food Database', label_en: 'Food Database', icon: Database, roles: ['admin'] },
     ],
   },
+  { view: 'planner', label_es: 'Planificador de Carreras', label_en: 'Race Planner', icon: Home, roles: ['admin', 'coach', 'athlete'], separator: true },
+  { view: 'saved', label_es: 'Carreras Guardadas', label_en: 'Saved Races', icon: BookOpen, roles: ['admin', 'coach', 'athlete'] },
   { view: 'athletes', label_es: 'Atletas', label_en: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
   { view: 'passport', label_es: 'Pasaporte Biológico', label_en: 'Biological Passport', icon: Fingerprint, roles: ['admin', 'coach', 'athlete'], separator: true },
   { view: 'reporting', label_es: 'Reportes', label_en: 'Reporting', icon: BarChart2, roles: ['admin', 'coach'] },

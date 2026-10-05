@@ -24,9 +24,9 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { view: 'nutrition-dashboard', label_es: 'Nutrición', label_en: 'Nutrition', icon: Apple, roles: ['admin', 'coach', 'athlete'] },
   { view: 'planner', label_es: 'Planificador', label_en: 'Planner', icon: Home, roles: ['admin', 'coach', 'athlete'] },
   { view: 'saved', label_es: 'Guardadas', label_en: 'Saved', icon: BookOpen, roles: ['admin', 'coach', 'athlete'] },
-  { view: 'nutrition-dashboard', label_es: 'Nutrición', label_en: 'Nutrition', icon: Apple, roles: ['admin', 'coach', 'athlete'] },
   { view: 'passport', label_es: 'Pasaporte', label_en: 'Passport', icon: Fingerprint, roles: ['admin', 'coach', 'athlete'] },
   { view: 'athletes', label_es: 'Atletas', label_en: 'Athletes', icon: Users, roles: ['admin', 'coach'] },
   { view: 'reporting', label_es: 'Reportes', label_en: 'Reports', icon: BarChart2, roles: ['admin', 'coach'] },
