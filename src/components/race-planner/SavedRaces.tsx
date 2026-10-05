@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame, Pencil, Trash2, ExternalLink } from 'lucide-react';
+import { Calendar, MapPin, Clock, Loader2, Trophy, Droplets, Flame, Pencil, Trash2, ExternalLink, UserCheck, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import type { Sport, Competition } from '../../types/race';
 import { getSportConfig } from '../../config/sports';
 import { getTagsForCompetition } from '../../lib/tagService';
 import type { Tag } from '../../lib/tagService';
+import {
+  getAssignmentsForAthlete,
+  getUnreadNotifications,
+  markNotificationsRead,
+  clearIsNewFlag,
+  markRaceAssignmentDeleted,
+  type RaceAssignment,
+  type RaceAssignmentNotification,
+} from '../../lib/raceAssignmentService';
 
 interface SavedCompetition {
   id: string;
@@ -37,27 +46,49 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
   const [tagsByRaceId, setTagsByRaceId] = useState<Record<string, Tag[]>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [assignments, setAssignments] = useState<Record<string, RaceAssignment>>({});
+  const [notifications, setNotifications] = useState<RaceAssignmentNotification[]>([]);
 
   const loadRaces = async () => {
     const athleteId = profile?.hub_user_id || user?.id || null;
     if (!athleteId) { setLoading(false); return; }
+
     const { data, error } = await supabase
       .from('competitions')
       .select('id, sport, race_name, race_date, race_data, athlete_data, strategy_preferences, strategy_output, created_at')
       .eq('athlete_id', athleteId)
       .order('created_at', { ascending: false });
+
     if (error) console.error('Load races error:', error);
     const loaded = (data as SavedCompetition[]) ?? [];
     setRaces(loaded);
     setLoading(false);
+
     loaded.forEach((race) => {
       getTagsForCompetition(race.id).then((tags) => {
         setTagsByRaceId((prev) => ({ ...prev, [race.id]: tags }));
       });
     });
+
+    const assigns = await getAssignmentsForAthlete(athleteId);
+    const assignMap: Record<string, RaceAssignment> = {};
+    for (const a of assigns) {
+      assignMap[a.competition_id] = a;
+    }
+    setAssignments(assignMap);
+
+    const notifs = await getUnreadNotifications(athleteId);
+    setNotifications(notifs);
   };
 
   useEffect(() => { loadRaces(); }, []);
+
+  const handleViewNotifications = async () => {
+    const athleteId = profile?.hub_user_id || user?.id;
+    if (!athleteId) return;
+    await markNotificationsRead(athleteId);
+    setNotifications([]);
+  };
 
   const formatDuration = (min: number) => {
     const h = Math.floor(min / 60);
@@ -66,6 +97,10 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
   };
 
   const handleEdit = (race: SavedCompetition) => {
+    const assignment = assignments[race.id];
+    if (assignment?.is_new) {
+      clearIsNewFlag(race.id);
+    }
     const competition: Competition = {
       id: race.id,
       sport: race.sport,
@@ -84,10 +119,18 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
 
   const doDelete = async (id: string) => {
     setDeletingId(id);
+    const race = races.find((r) => r.id === id);
+    const assignment = assignments[id];
+
+    if (assignment) {
+      await markRaceAssignmentDeleted(id, race?.race_name ?? '', assignment.coach_name);
+    }
+
     const { error } = await supabase.from('competitions').delete().eq('id', id);
     if (!error) {
       setRaces((prev) => prev.filter((r) => r.id !== id));
       setTagsByRaceId((prev) => { const n = { ...prev }; delete n[id]; return n; });
+      setAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     }
     setDeletingId(null);
     setDeleteConfirmId(null);
@@ -99,6 +142,31 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
         <h1 className="font-heading text-2xl text-[#1f2937]">Saved Races</h1>
         <p className="font-body text-sm text-[#9ca3af] mt-1">Your competition history and race plans</p>
       </div>
+
+      {notifications.length > 0 && (
+        <div
+          className="mb-4 rounded-2xl p-4 flex items-center gap-3 cursor-pointer transition-all hover:shadow-md"
+          style={{ backgroundColor: '#eff6ff', border: '2px solid #bfdbfe' }}
+          onClick={handleViewNotifications}
+        >
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: '#2563eb' }}
+          >
+            <Bell className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="font-body font-semibold text-sm" style={{ color: '#1e3a8a' }}>
+              {notifications.length} new {notifications.length === 1 ? 'notification' : 'notifications'}
+            </p>
+            <p className="font-body text-xs mt-0.5" style={{ color: '#3b82f6' }}>
+              {notifications.map((n) => n.message).slice(0, 2).join(' · ')}
+              {notifications.length > 2 && ` +${notifications.length - 2} more`}
+            </p>
+          </div>
+          <span className="font-body text-xs font-semibold" style={{ color: '#2563eb' }}>Dismiss</span>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -130,18 +198,25 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
             const distanceUnit = race.race_data.distanceUnit as string;
             const durationMin = race.race_data.expectedDurationMin as number;
             const temperature = race.race_data.temperature as number;
+            const assignment = assignments[race.id];
+            const isCoachAssigned = !!assignment;
+            const isNewBadge = assignment?.is_new;
 
             return (
               <div
                 key={race.id}
                 className="bg-white rounded-2xl p-5 transition-all duration-200"
-                style={{ border: '2px solid #e5e7eb', boxShadow: '0 2px 8px rgba(81,65,99,0.05)' }}
+                style={{
+                  border: '2px solid #e5e7eb',
+                  boxShadow: '0 2px 8px rgba(81,65,99,0.05)',
+                  ...(isNewBadge ? { borderColor: '#fdba74' } : {}),
+                }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.borderColor = '#fdda36';
                   (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(253,218,54,0.18)';
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb';
+                  (e.currentTarget as HTMLElement).style.borderColor = isNewBadge ? '#fdba74' : '#e5e7eb';
                   (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(81,65,99,0.05)';
                 }}
               >
@@ -157,7 +232,26 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-body font-bold text-[#1f2937] truncate">{race.race_name}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-body font-bold text-[#1f2937] truncate">{race.race_name}</h3>
+                        {isCoachAssigned && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}
+                          >
+                            <UserCheck className="w-3 h-3" />
+                            {assignment?.status === 'edited' ? 'Updated by Coach' : 'Assigned by Coach'}
+                          </span>
+                        )}
+                        {isNewBadge && (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs font-bold animate-pulse"
+                            style={{ backgroundColor: '#fb923c', color: '#fff' }}
+                          >
+                            NEW
+                          </span>
+                        )}
+                      </div>
                       <span className="font-body text-xs text-[#9ca3af]">{cfg.label}</span>
                     </div>
                   </div>

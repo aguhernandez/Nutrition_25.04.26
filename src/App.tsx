@@ -79,6 +79,7 @@ function AppShell() {
   const [activeView, setActiveView] = useState<AppView>('nutrition-dashboard');
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [editingCompetition, setEditingCompetition] = useState<Competition | null>(null);
+  const [raceTargetAthlete, setRaceTargetAthlete] = useState<{ id: string; email: string; name: string } | null>(null);
 
   if (loading) {
     return (
@@ -170,15 +171,20 @@ function AppShell() {
             key={editingCompetition?.id ?? 'new'}
             initialCompetition={editingCompetition ?? undefined}
             onBackToSaved={editingCompetition ? () => { setEditingCompetition(null); setActiveView('saved'); } : undefined}
+            isCoachContext={role === 'coach' || role === 'admin'}
+            targetAthleteId={raceTargetAthlete?.id}
+            targetAthleteEmail={raceTargetAthlete?.email}
+            targetAthleteName={raceTargetAthlete?.name}
           />
         )}
 
         {view === 'saved' && (
           <SavedRacesView
             onBack={() => setActiveView('planner')}
-            onEdit={(comp) => { setEditingCompetition(comp); setActiveView('planner'); }}
+            onEdit={(comp) => { setEditingCompetition(comp); setRaceTargetAthlete(null); setActiveView('planner'); }}
           />
         )}
+
         {isNutritionView && (
           <NutritionModule
             initialTab={nutritionTab}

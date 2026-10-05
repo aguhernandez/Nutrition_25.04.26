@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import type {
   Sport,
   RaceData,
@@ -17,15 +18,116 @@ import PostRaceFeedback from './PostRaceFeedback';
 import { setTagsForCompetition, syncAthleteTagsToHub } from '../../lib/tagService';
 import type { Tag } from '../../lib/tagService';
 import TagSelector from '../shared/TagSelector';
+import CoachRaceAthleteSelector from './CoachRaceAthleteSelector';
+import type { RaceAthlete } from './CoachRaceAthleteSelector';
+import { pushRacePlan } from '../../lib/hubApi';
+import type { HubRacePlanPayload } from '../../lib/hubApi';
+import {
+  createRaceAssignment,
+  markRaceAssignmentEdited,
+  getAssignmentForCompetition,
+} from '../../lib/raceAssignmentService';
 
 type PlannerStep = 'sport' | 'questionnaire' | 'results';
 
 interface Props {
   initialCompetition?: Competition;
   onBackToSaved?: () => void;
+  targetAthleteId?: string;
+  targetAthleteEmail?: string;
+  targetAthleteName?: string;
+  isCoachContext?: boolean;
 }
 
-export default function RacePlanner({ initialCompetition, onBackToSaved }: Props = {}) {
+function buildRacePlanPayload(competition: Competition): HubRacePlanPayload {
+  const out = competition.strategyOutput;
+  const rd = competition.raceData;
+  const ad = competition.athleteData;
+  const sp = competition.strategyPreferences;
+
+  return {
+    race_name: competition.raceName,
+    sport: competition.sport,
+    race_date: competition.raceDate ?? rd.raceDate ?? null,
+    distance_km: rd.distanceUnit === 'miles' ? rd.distance * 1.609 : rd.distance,
+    expected_duration_min: rd.expectedDurationMin,
+    temperature_c: rd.temperature,
+    humidity_pct: rd.humidity,
+    altitude_m: rd.altitude,
+    intensity_percent: out?.pacing?.intensityPercent ?? 0,
+    intensity_zone: out?.pacing?.intensityZone ?? '',
+    target_pace_min_km: out?.pacing?.estimatedPaceMinKm ?? 0,
+    pacing_recommendation: out?.pacing?.recommendation ?? '',
+    carbs_g_per_hour: out?.carbs?.recommendedIntakeGH ?? 0,
+    total_carbs_g: out?.carbs?.totalCarbsG ?? 0,
+    carb_sources: out?.carbs?.sources ?? [],
+    carb_timing: out?.carbs?.timing ?? '',
+    fluid_l_per_hour: out?.hydration?.fluidIntakeLH ?? 0,
+    total_fluid_l: out?.hydration?.totalFluidL ?? 0,
+    sodium_mg_per_hour: out?.hydration?.sodiumMgH ?? 0,
+    total_sodium_mg: out?.hydration?.totalSodiumMg ?? 0,
+    sweat_rate_l_per_hour: out?.hydration?.sweatRateLH ?? 0,
+    projected_mass_loss_pct: out?.hydration?.projectedMassLossPct ?? 0,
+    caffeine_total_mg: out?.caffeine?.totalMg ?? 0,
+    caffeine_mg_per_kg: out?.caffeine?.mgPerKg ?? 0,
+    caffeine_pre_dose_mg: out?.caffeine?.preDoseMg ?? 0,
+    caffeine_pre_dose_min_before_start: out?.caffeine?.preDoseMinBeforeStart ?? 0,
+    caffeine_mid_race_doses: out?.caffeine?.midRaceDoses ?? [],
+    caffeine_sources: out?.caffeine?.sources ?? [],
+    caffeine_notes: out?.caffeine?.notes ?? '',
+    segments: [],
+    pre_comp_notes: out?.preComp?.notes ?? '',
+    cho_loading_days: out?.preComp?.choLoadingDays ?? sp.preCompDays,
+    pre_comp_days: (out?.preComp?.plan ?? []).map((d) => ({
+      day_label: d.dayLabel,
+      carbs_gkg: d.carbsGkg,
+      total_carbs_g: d.totalCarbsG,
+      protein_g: d.proteinG,
+      total_kcal: d.totalKcal,
+      meals: d.meals.map((m) => ({
+        timing: m.timing,
+        description: m.description,
+        carbs_g: m.carbsG,
+      })),
+      notes: d.notes,
+    })),
+    race_breakfast_timing: out?.preComp?.raceBreakfast?.timingBeforeStart ?? '',
+    race_breakfast_description: out?.preComp?.raceBreakfast?.description ?? '',
+    race_breakfast_carbs_g: out?.preComp?.raceBreakfast?.carbsG ?? 0,
+    gi_training_weeks: out?.giTraining?.weeks ?? null,
+    gi_training_target_g_per_hour: out?.giTraining?.targetGH ?? null,
+    gi_training_notes: out?.giTraining?.notes ?? null,
+    gi_sessions: (out?.giTraining?.sessions ?? []).map((s) => ({
+      week: s.week,
+      intake_g_per_hour: s.intakeGH,
+      duration: s.duration,
+      format: s.format,
+      notes: s.notes,
+    })),
+    risks: (out?.risks ?? []).map((r) => ({
+      level: r.level,
+      message: r.message,
+    })),
+    athlete_notes: {
+      pacing: '',
+      carbs: '',
+      hydration: '',
+      caffeine: '',
+      general: '',
+    },
+    generated_at: out?.generatedAt ?? new Date().toISOString(),
+    plan_version: '1.0',
+  };
+}
+
+export default function RacePlanner({
+  initialCompetition,
+  onBackToSaved,
+  targetAthleteId,
+  targetAthleteEmail,
+  targetAthleteName,
+  isCoachContext = false,
+}: Props = {}) {
   const { user, profile } = useAuth();
   const [step, setStep] = useState<PlannerStep>(initialCompetition ? 'results' : 'sport');
   const [selectedSport, setSelectedSport] = useState<Sport | null>(initialCompetition?.sport ?? null);
@@ -34,6 +136,24 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
   const [showFeedback, setShowFeedback] = useState(false);
   const [catalogEntry, setCatalogEntry] = useState<RaceCatalogEntry | undefined>(undefined);
   const [raceTags, setRaceTags] = useState<Tag[]>([]);
+  const [selectedAthlete, setSelectedAthlete] = useState<RaceAthlete | null>(
+    isCoachContext && targetAthleteId
+      ? {
+          id: targetAthleteId,
+          email: targetAthleteEmail ?? '',
+          full_name: targetAthleteName ?? '',
+          hub_user_id: targetAthleteId,
+          hasLocalProfile: true,
+        }
+      : null,
+  );
+  const [pushingToHub, setPushingToHub] = useState(false);
+  const [pushResult, setPushResult] = useState<'success' | 'error' | null>(null);
+
+  const effectiveAthleteId = selectedAthlete?.hub_user_id || selectedAthlete?.id || targetAthleteId || profile?.hub_user_id || user?.id || null;
+  const effectiveAthleteEmail = selectedAthlete?.email || targetAthleteEmail || profile?.email || null;
+  const effectiveAthleteName = selectedAthlete?.full_name || targetAthleteName || profile?.full_name || '';
+  const isCoach = isCoachContext || (profile?.role === 'coach' || profile?.role === 'admin');
 
   const handleSportSelect = (sport: Sport) => {
     setSelectedSport(sport);
@@ -44,7 +164,7 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
     raceData: RaceData,
     athleteData: AthleteData,
     strategy: StrategyPreferences,
-    entry?: RaceCatalogEntry
+    entry?: RaceCatalogEntry,
   ) => {
     setCatalogEntry(entry);
     const sport = selectedSport!;
@@ -64,10 +184,9 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
 
   const handleSave = async () => {
     if (!competition) return;
-    const athleteId = profile?.hub_user_id || user?.id || null;
+    const athleteId = effectiveAthleteId;
 
     if (savedId) {
-      // Update existing record
       const { error } = await supabase
         .from('competitions')
         .update({
@@ -81,8 +200,14 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
         })
         .eq('id', savedId);
       if (error) console.error('Update race error:', error);
+
+      if (isCoach && selectedAthlete) {
+        const existing = await getAssignmentForCompetition(savedId);
+        if (existing) {
+          await markRaceAssignmentEdited(savedId, competition.raceName, profile?.full_name || 'Coach');
+        }
+      }
     } else {
-      // Insert new record
       const { data, error } = await supabase
         .from('competitions')
         .insert({
@@ -104,10 +229,43 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
         if (raceTags.length > 0) {
           await setTagsForCompetition(data.id, raceTags.map((t) => t.id));
         }
-        if (profile?.email && profile?.id) {
-          syncAthleteTagsToHub(profile.email, profile.id);
+        if (effectiveAthleteEmail && profile?.id) {
+          syncAthleteTagsToHub(effectiveAthleteEmail, profile.id);
+        }
+
+        if (isCoach && selectedAthlete) {
+          await createRaceAssignment({
+            competitionId: data.id,
+            coachId: profile?.hub_user_id || user?.id || '',
+            coachName: profile?.full_name || 'Coach',
+            athleteId: selectedAthlete.hub_user_id || selectedAthlete.id,
+            athleteEmail: selectedAthlete.email,
+            raceName: competition.raceName,
+          });
         }
       }
+    }
+  };
+
+  const handleSendToCalendar = async () => {
+    if (!competition || !savedId) return;
+    if (!effectiveAthleteEmail && !effectiveAthleteId) return;
+
+    setPushingToHub(true);
+    setPushResult(null);
+
+    try {
+      const pushTarget = effectiveAthleteEmail ?? effectiveAthleteId!;
+      const payload = buildRacePlanPayload(competition);
+      await pushRacePlan(pushTarget, payload);
+      setPushResult('success');
+      setTimeout(() => setPushResult(null), 4000);
+    } catch (err) {
+      console.error('[RacePlanner] Send to Calendar error:', err);
+      setPushResult('error');
+      setTimeout(() => setPushResult(null), 5000);
+    } finally {
+      setPushingToHub(false);
     }
   };
 
@@ -123,11 +281,31 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
     setShowFeedback(false);
     setCatalogEntry(undefined);
     setRaceTags([]);
+    setPushResult(null);
   };
 
   return (
     <div className="min-h-full">
-      {step === 'sport' && <SportSelector onSelect={handleSportSelect} />}
+      {isCoach && step !== 'sport' && (
+        <CoachRaceAthleteSelector
+          selectedAthlete={selectedAthlete}
+          onSelect={setSelectedAthlete}
+          onClear={() => setSelectedAthlete(null)}
+        />
+      )}
+
+      {step === 'sport' && (
+        <>
+          {isCoach && (
+            <CoachRaceAthleteSelector
+              selectedAthlete={selectedAthlete}
+              onSelect={setSelectedAthlete}
+              onClear={() => setSelectedAthlete(null)}
+            />
+          )}
+          <SportSelector onSelect={handleSportSelect} />
+        </>
+      )}
 
       {step === 'questionnaire' && selectedSport && (
         <Questionnaire
@@ -155,6 +333,51 @@ export default function RacePlanner({ initialCompetition, onBackToSaved }: Props
               />
             </div>
           )}
+
+          {isCoach && savedId && selectedAthlete && (
+            <div
+              className="mt-4 mb-6 rounded-2xl p-5 flex items-center justify-between"
+              style={{ backgroundColor: '#f0fdf4', border: '2px solid #bbf7d0' }}
+            >
+              <div>
+                <p className="font-body font-semibold text-sm" style={{ color: '#14532d' }}>
+                  {pushResult === 'success'
+                    ? `Carrera enviada al calendario de ${selectedAthlete.full_name}`
+                    : pushResult === 'error'
+                      ? 'Error al enviar. Intenta de nuevo.'
+                      : `Enviar al calendario de ${selectedAthlete.full_name}`}
+                </p>
+                <p className="font-body text-xs mt-0.5" style={{ color: '#15803d' }}>
+                  {pushResult === 'success'
+                    ? 'El atleta vera esta carrera en su calendario.'
+                    : 'El atleta recibira la carrera en su Hub.'}
+                </p>
+              </div>
+              {pushResult === 'success' ? (
+                <CheckCircle2 className="w-6 h-6" style={{ color: '#16a34a' }} />
+              ) : pushResult === 'error' ? (
+                <AlertCircle className="w-6 h-6" style={{ color: '#dc2626' }} />
+              ) : (
+                <button
+                  onClick={handleSendToCalendar}
+                  disabled={pushingToHub}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-body font-bold text-sm transition-all"
+                  style={{
+                    backgroundColor: pushingToHub ? '#86efac' : '#16a34a',
+                    color: '#fff',
+                    cursor: pushingToHub ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {pushingToHub ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                  ) : (
+                    <><Send className="w-4 h-4" /> Send to Calendar</>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
           {savedId && !showFeedback && (
             <div
               className="mt-4 mb-10 bg-white border-2 border-[#e5e7eb] rounded-2xl p-5 flex items-center justify-between"
