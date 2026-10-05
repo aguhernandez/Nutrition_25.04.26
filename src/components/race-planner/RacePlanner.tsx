@@ -11,6 +11,7 @@ import type {
 import { calculateRaceStrategy } from '../../engine/raceCalculationEngine';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
+import { usePreferences } from '../../lib/preferences';
 import SportSelector from './SportSelector';
 import Questionnaire from './questionnaire/Questionnaire';
 import ResultsDashboard from './results/ResultsDashboard';
@@ -129,6 +130,7 @@ export default function RacePlanner({
   isCoachContext = false,
 }: Props = {}) {
   const { user, profile } = useAuth();
+  const { language } = usePreferences();
   const [step, setStep] = useState<PlannerStep>(initialCompetition ? 'results' : 'sport');
   const [selectedSport, setSelectedSport] = useState<Sport | null>(initialCompetition?.sport ?? null);
   const [competition, setCompetition] = useState<Competition | null>(initialCompetition ?? null);
@@ -335,15 +337,23 @@ export default function RacePlanner({
                 <div>
                   <p className="font-body font-semibold text-sm" style={{ color: '#14532d' }}>
                     {pushResult === 'success'
-                      ? `Carrera enviada al calendario de ${selectedAthlete.full_name}`
+                      ? language === 'es'
+                        ? `Carrera enviada al calendario de ${selectedAthlete.full_name}`
+                        : `Race sent to ${selectedAthlete.full_name}'s calendar`
                       : pushResult === 'error'
-                        ? 'Error al enviar. Intenta de nuevo.'
-                        : `Enviar al calendario de ${selectedAthlete.full_name}`}
+                        ? language === 'es' ? 'Error al enviar. Intenta de nuevo.' : 'Unable to send. Please try again.'
+                        : language === 'es'
+                          ? `Enviar al calendario de ${selectedAthlete.full_name}`
+                          : `Send to ${selectedAthlete.full_name}'s calendar`}
                   </p>
                   <p className="font-body text-xs mt-0.5" style={{ color: '#15803d' }}>
                     {pushResult === 'success'
-                      ? 'El atleta vera esta carrera en su calendario.'
-                      : 'El atleta recibira la carrera en su Hub.'}
+                      ? language === 'es'
+                        ? 'El atleta vera esta carrera en su calendario.'
+                        : 'The athlete will see this race in their calendar.'
+                      : language === 'es'
+                        ? 'El atleta recibira la carrera en su Hub.'
+                        : 'The athlete will receive the race in their Hub.'}
                   </p>
                 </div>
                 {pushResult === 'success' ? (
@@ -364,7 +374,7 @@ export default function RacePlanner({
                     {pushingToHub ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
                     ) : (
-                      <><Send className="w-4 h-4" /> Send to Calendar</>
+                      <><Send className="w-4 h-4" /> {language === 'es' ? 'Enviar al calendario' : 'Send to Calendar'}</>
                     )}
                   </button>
                 )}
@@ -442,12 +452,14 @@ export default function RacePlanner({
               <div>
                 <p className="font-body font-semibold text-sm" style={{ color: pushResult === 'success' ? '#14532d' : '#991b1b' }}>
                   {pushResult === 'success'
-                    ? 'Carrera enviada a tu calendario'
-                    : 'Error al enviar. Intenta de nuevo.'}
+                    ? language === 'es' ? 'Carrera enviada a tu calendario' : 'Race sent to your calendar'
+                    : language === 'es' ? 'Error al enviar. Intenta de nuevo.' : 'Unable to send. Please try again.'}
                 </p>
                 {pushResult === 'success' && (
                   <p className="font-body text-xs mt-0.5" style={{ color: '#15803d' }}>
-                    La carrera aparecera en tu calendario del Hub.
+                    {language === 'es'
+                      ? 'La carrera aparecera en tu calendario del Hub.'
+                      : 'The race will appear in your Hub calendar.'}
                   </p>
                 )}
               </div>
