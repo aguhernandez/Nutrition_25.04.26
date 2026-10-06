@@ -7,6 +7,8 @@ import type { Recipe, RecipeCategory, RecipeIngredient } from '../../types/nutri
 import { getTagsForRecipe, setTagsForRecipe } from '../../lib/tagService';
 import type { Tag } from '../../lib/tagService';
 import TagSelector from '../shared/TagSelector';
+import IngredientBuilder from './IngredientBuilder';
+import type { RecipeIngredientFull } from '../../types/ingredientBuilder';
 
 interface Props {
   onBack: () => void;
@@ -260,7 +262,18 @@ function RecipeFormModal({
   es: boolean;
 }) {
   const [form, setForm] = useState(initial);
-  const [newIng, setNewIng] = useState<RecipeIngredient>({ name: '', quantity: 1, unit: 'g', calories: 0, carbs: 0, protein: 0, fat: 0 });
+  const [fullIngredients, setFullIngredients] = useState<RecipeIngredientFull[]>(
+    (initial.ingredients || []).map((ing) => ({
+      name: ing.name,
+      quantity: ing.quantity,
+      unit: ing.unit,
+      base_quantity_g: ing.unit === 'g' ? ing.quantity : ing.quantity,
+      calories: ing.calories || 0,
+      carbs: ing.carbs || 0,
+      protein: ing.protein || 0,
+      fat: ing.fat || 0,
+    }))
+  );
   const [saving, setSaving] = useState(false);
   const [langTab, setLangTab] = useState<LangTab>(es ? 'es' : 'en');
   const [recipeTags, setRecipeTags] = useState<Tag[]>([]);
@@ -271,23 +284,23 @@ function RecipeFormModal({
     }
   }, [initialRecipeId]);
 
-  const calcMacros = (ingredients: RecipeIngredient[]) => ({
-    calories_kcal: ingredients.reduce((s, i) => s + i.calories, 0),
-    carbs_g: ingredients.reduce((s, i) => s + i.carbs, 0),
-    protein_g: ingredients.reduce((s, i) => s + i.protein, 0),
-    fat_g: ingredients.reduce((s, i) => s + i.fat, 0),
-  });
-
-  const addIng = () => {
-    if (!newIng.name.trim()) return;
-    const updated = [...form.ingredients, { ...newIng }];
-    setForm((f) => ({ ...f, ingredients: updated, ...calcMacros(updated) }));
-    setNewIng({ name: '', quantity: 1, unit: 'g', calories: 0, carbs: 0, protein: 0, fat: 0 });
-  };
-
-  const removeIng = (i: number) => {
-    const updated = form.ingredients.filter((_, idx) => idx !== i);
-    setForm((f) => ({ ...f, ingredients: updated, ...calcMacros(updated) }));
+  const handleIngredientsChange = (ings: RecipeIngredientFull[]) => {
+    setFullIngredients(ings);
+    const simple: RecipeIngredient[] = ings.map((i) => ({
+      name: i.name, quantity: i.quantity, unit: i.unit,
+      calories: Math.round(i.calories || 0), carbs: Math.round((i.carbs || 0) * 10) / 10,
+      protein: Math.round((i.protein || 0) * 10) / 10, fat: Math.round((i.fat || 0) * 10) / 10,
+    }));
+    setForm((f) => ({
+      ...f,
+      ingredients: simple,
+      calories_kcal: Math.round(ings.reduce((s, i) => s + (i.calories || 0), 0)),
+      carbs_g: Math.round(ings.reduce((s, i) => s + (i.carbs || 0), 0) * 10) / 10,
+      protein_g: Math.round(ings.reduce((s, i) => s + (i.protein || 0), 0) * 10) / 10,
+      fat_g: Math.round(ings.reduce((s, i) => s + (i.fat || 0), 0) * 10) / 10,
+      fiber_g: Math.round(ings.reduce((s, i) => s + (i.fiber || 0), 0) * 10) / 10,
+      sodium_mg: Math.round(ings.reduce((s, i) => s + (i.sodium_mg || 0), 0)),
+    }));
   };
 
   const handleSave = async () => {
@@ -520,57 +533,11 @@ function RecipeFormModal({
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#374151' }}>
-              {es ? 'Ingredientes' : 'Ingredients'}
-            </label>
-            {form.ingredients.map((ing, i) => (
-              <div key={i} className="flex items-center gap-2 py-1.5 border-b" style={{ borderColor: '#f3f4f6' }}>
-                <span className="text-sm flex-1" style={{ color: '#1f2937' }}>{ing.quantity} {ing.unit} {ing.name}</span>
-                <span className="text-xs" style={{ color: '#9ca3af' }}>{ing.calories} kcal</span>
-                <button onClick={() => removeIng(i)} className="p-1 hover:bg-red-50 rounded">
-                  <X className="w-3 h-3" style={{ color: '#ef4444' }} />
-                </button>
-              </div>
-            ))}
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              <input
-                type="text"
-                value={newIng.name}
-                onChange={(e) => setNewIng((f) => ({ ...f, name: e.target.value }))}
-                placeholder={es ? 'Nombre' : 'Name'}
-                className="input-brand col-span-2"
-              />
-              <input type="number" value={newIng.quantity} onChange={(e) => setNewIng((f) => ({ ...f, quantity: parseFloat(e.target.value) || 1 }))} placeholder={es ? 'Cant' : 'Qty'} className="input-brand" />
-              <input type="text" value={newIng.unit} onChange={(e) => setNewIng((f) => ({ ...f, unit: e.target.value }))} placeholder={es ? 'Unidad' : 'Unit'} className="input-brand" />
-              <input type="number" value={newIng.calories} onChange={(e) => setNewIng((f) => ({ ...f, calories: parseFloat(e.target.value) || 0 }))} placeholder="kcal" className="input-brand" />
-              <input type="number" value={newIng.carbs} onChange={(e) => setNewIng((f) => ({ ...f, carbs: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Carbos g' : 'Carbs g'} className="input-brand" />
-              <input type="number" value={newIng.protein} onChange={(e) => setNewIng((f) => ({ ...f, protein: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Prot g' : 'Prot g'} className="input-brand" />
-              <input type="number" value={newIng.fat} onChange={(e) => setNewIng((f) => ({ ...f, fat: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Grasa g' : 'Fat g'} className="input-brand" />
-              <button
-                onClick={addIng}
-                className="col-span-2 py-2 rounded-xl border font-medium text-sm transition-all hover:bg-gray-50 flex items-center justify-center gap-2"
-                style={{ borderColor: '#e5e7eb', color: '#374151' }}
-              >
-                <Plus className="w-4 h-4" /> {es ? 'Agregar ingrediente' : 'Add ingredient'}
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>
-                {es ? 'Calorías (kcal)' : 'Calories (kcal)'}
-              </label>
-              <input type="number" min={0} value={Math.round(form.calories_kcal)} onChange={(e) => setForm((f) => ({ ...f, calories_kcal: parseFloat(e.target.value) || 0 }))} className="input-brand" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>
-                {es ? 'Fibra (g)' : 'Fiber (g)'}
-              </label>
-              <input type="number" min={0} value={form.fiber_g} onChange={(e) => setForm((f) => ({ ...f, fiber_g: parseFloat(e.target.value) || 0 }))} className="input-brand" />
-            </div>
-          </div>
+          <IngredientBuilder
+            ingredients={fullIngredients}
+            onChange={handleIngredientsChange}
+            servings={form.servings}
+          />
 
           <TagSelector
             selectedTags={recipeTags}
