@@ -605,11 +605,18 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
   const loadRecipes = async () => {
     const { data } = await supabase
       .from('recipes')
-      .select('id, name, name_es, name_en, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, is_public, category, servings, prep_time_min, cook_time_min, ingredients')
-      .or(`user_id.eq.${effectiveUserId},is_public.eq.true`)
+      .select('id, name, name_es, name_en, calories_kcal, protein_g, carbs_g, fat_g, is_public, category, servings, prep_time_min, cook_time_min, ingredients')
+      .eq('is_public', true)
       .order('name')
       .limit(200);
-    setRecipes((data || []) as RecipeItem[]);
+    const mapped = (data || []).map((r: any) => ({
+      ...r,
+      calories_per_100g: Math.round((r.calories_kcal || 0) / (r.servings || 1)),
+      protein_per_100g: Math.round(((r.protein_g || 0) / (r.servings || 1)) * 10) / 10,
+      carbs_per_100g: Math.round(((r.carbs_g || 0) / (r.servings || 1)) * 10) / 10,
+      fat_per_100g: Math.round(((r.fat_g || 0) / (r.servings || 1)) * 10) / 10,
+    }));
+    setRecipes(mapped as RecipeItem[]);
   };
 
   const loadTemplates = async () => {
