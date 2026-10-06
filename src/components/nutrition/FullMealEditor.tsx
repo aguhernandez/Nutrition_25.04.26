@@ -623,8 +623,7 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
 
   const filteredFoods = foods.filter((f) => {
     const q = foodSearch.toLowerCase();
-    const name = es ? f.name_es : f.name_en;
-    const matchName = name.toLowerCase().includes(q);
+    const matchName = (f.name_es || '').toLowerCase().includes(q) || (f.name_en || '').toLowerCase().includes(q);
     const matchTab = isFoodInTab(f, foodTypeTab);
     const matchSubCat = !foodSubCategory || f.category === foodSubCategory;
     const matchMacro = applyMacroFilter(f, macroFilter);
@@ -633,13 +632,14 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
 
   const filteredRecipes = recipes.filter((r) => {
     const q = foodSearch.toLowerCase();
-    return r.name.toLowerCase().includes(q);
+    const nameEn = (r.name_en || r.name || '').toLowerCase();
+    const nameEs = (r.name_es || r.name || '').toLowerCase();
+    return nameEn.includes(q) || nameEs.includes(q);
   });
 
   const filteredSupplements = foods.filter((f) => {
     const q = foodSearch.toLowerCase();
-    const name = es ? f.name_es : f.name_en;
-    const matchName = name.toLowerCase().includes(q);
+    const matchName = (f.name_es || '').toLowerCase().includes(q) || (f.name_en || '').toLowerCase().includes(q);
     const matchCat = f.category?.toLowerCase().includes('supplement');
     const matchForm = !suppFormFilter || f.product_form === suppFormFilter;
     return matchName && matchCat && matchForm;
@@ -3496,7 +3496,9 @@ function FoodCard({
   food, es, onAdd, disabled, isOFF, onDragStart,
 }: { food: FoodV2; es: boolean; onAdd: (f: FoodV2, qty: number) => void; disabled: boolean; isOFF?: boolean; onDragStart?: (f: FoodV2) => void }) {
   const [qty, setQty] = useState(100);
-  const name = es ? food.name_es : food.name_en;
+  const primaryName = es ? (food.name_es || food.name_en) : (food.name_en || food.name_es);
+  const altName = es ? (food.name_en || '') : (food.name_es || '');
+  const hasAlt = altName && altName !== primaryName;
   const scaled = calcItemMacros(food, qty);
 
   return (
@@ -3508,7 +3510,8 @@ function FoodCard({
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-snug" style={{ color: '#1f2937' }}>{name}</p>
+          <p className="text-sm font-semibold leading-snug" style={{ color: '#1f2937' }}>{primaryName}</p>
+          {hasAlt && <p className="text-xs leading-snug" style={{ color: '#9ca3af' }}>{altName}</p>}
           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
             {isOFF && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: '#fff7ed', color: '#ea580c' }}>OFF</span>}
             {food.source === 'usda' && <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: '#eff6ff', color: '#2563eb' }}>USDA</span>}
@@ -3557,12 +3560,16 @@ function RecipeCard({
 }: { recipe: RecipeItem; onAdd: (r: RecipeItem, qty: number) => void; disabled: boolean; es?: boolean }) {
   const [qty, setQty] = useState(100);
   const cal = Math.round((recipe.calories_per_100g || 0) * qty / 100);
+  const primaryName = es ? (recipe.name_es || recipe.name_en || recipe.name) : (recipe.name_en || recipe.name_es || recipe.name);
+  const altName = es ? (recipe.name_en || recipe.name || '') : (recipe.name_es || '');
+  const hasAlt = altName && altName !== primaryName;
 
   return (
     <div className="px-3 py-3 border-b transition-colors hover:bg-gray-50" style={{ borderColor: '#f3f4f6' }}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-snug" style={{ color: '#1f2937' }}>{recipe.name}</p>
+          <p className="text-sm font-semibold leading-snug" style={{ color: '#1f2937' }}>{primaryName}</p>
+          {hasAlt && <p className="text-xs leading-snug" style={{ color: '#9ca3af' }}>{altName}</p>}
           {recipe.is_public && (
             <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: '#f0fdf4', color: '#16a34a' }}>
               {es ? 'Sistema' : 'System'}
