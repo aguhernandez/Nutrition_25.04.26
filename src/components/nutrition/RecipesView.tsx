@@ -206,7 +206,7 @@ function RecipeCard({
         <div className="grid grid-cols-3 gap-1 pt-2 border-t" style={{ borderColor: '#f3f4f6' }}>
           <div className="text-center">
             <div className="text-xs font-semibold" style={{ color: '#3b82f6' }}>{Math.round(recipe.carbs_g)}g</div>
-            <div className="text-xs" style={{ color: '#9ca3af' }}>Carbs</div>
+            <div className="text-xs" style={{ color: '#9ca3af' }}>{es ? 'Carbos' : 'Carbs'}</div>
           </div>
           <div className="text-center">
             <div className="text-xs font-semibold" style={{ color: '#10b981' }}>{Math.round(recipe.protein_g)}g</div>
@@ -366,7 +366,7 @@ function RecipeFormModal({
               </button>
               <div className="ml-auto flex items-center gap-1 text-xs" style={{ color: '#9ca3af' }}>
                 <Globe className="w-3 h-3" />
-                {langTab === 'es' ? 'Contenido en Español' : 'English Content'}
+                {langTab === 'es' ? (es ? 'Contenido en Español' : 'Spanish Content') : (es ? 'Contenido en Inglés' : 'English Content')}
               </div>
             </div>
 
@@ -375,7 +375,7 @@ function RecipeFormModal({
                 <>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Nombre en Español *
+                      {es ? 'Nombre (Español) *' : 'Spanish Name *'}
                     </label>
                     <input
                       type="text"
@@ -387,7 +387,7 @@ function RecipeFormModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Descripción
+                      {es ? 'Descripción' : 'Description'}
                     </label>
                     <textarea
                       rows={2}
@@ -399,7 +399,7 @@ function RecipeFormModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Instrucciones
+                      {es ? 'Instrucciones' : 'Instructions'}
                     </label>
                     <textarea
                       rows={4}
@@ -414,7 +414,7 @@ function RecipeFormModal({
                 <>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Name in English *
+                      {es ? 'Nombre (Inglés) *' : 'English Name *'}
                     </label>
                     <input
                       type="text"
@@ -426,7 +426,7 @@ function RecipeFormModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Description
+                      {es ? 'Descripción' : 'Description'}
                     </label>
                     <textarea
                       rows={2}
@@ -438,7 +438,7 @@ function RecipeFormModal({
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>
-                      Instructions
+                      {es ? 'Instrucciones' : 'Instructions'}
                     </label>
                     <textarea
                       rows={4}
@@ -513,7 +513,6 @@ function RecipeFormModal({
               type="url"
               value={form.image_url}
               onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-              placeholder="https://images.pexels.com/..."
               className="input-brand"
             />
             {form.image_url && (
@@ -545,7 +544,7 @@ function RecipeFormModal({
               <input type="number" value={newIng.quantity} onChange={(e) => setNewIng((f) => ({ ...f, quantity: parseFloat(e.target.value) || 1 }))} placeholder={es ? 'Cant' : 'Qty'} className="input-brand" />
               <input type="text" value={newIng.unit} onChange={(e) => setNewIng((f) => ({ ...f, unit: e.target.value }))} placeholder={es ? 'Unidad' : 'Unit'} className="input-brand" />
               <input type="number" value={newIng.calories} onChange={(e) => setNewIng((f) => ({ ...f, calories: parseFloat(e.target.value) || 0 }))} placeholder="kcal" className="input-brand" />
-              <input type="number" value={newIng.carbs} onChange={(e) => setNewIng((f) => ({ ...f, carbs: parseFloat(e.target.value) || 0 }))} placeholder="Carbs g" className="input-brand" />
+              <input type="number" value={newIng.carbs} onChange={(e) => setNewIng((f) => ({ ...f, carbs: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Carbos g' : 'Carbs g'} className="input-brand" />
               <input type="number" value={newIng.protein} onChange={(e) => setNewIng((f) => ({ ...f, protein: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Prot g' : 'Prot g'} className="input-brand" />
               <input type="number" value={newIng.fat} onChange={(e) => setNewIng((f) => ({ ...f, fat: parseFloat(e.target.value) || 0 }))} placeholder={es ? 'Grasa g' : 'Fat g'} className="input-brand" />
               <button
@@ -961,6 +960,7 @@ export default function RecipesView({ onBack }: Props) {
           initial={editRecipe
             ? {
                 ...editRecipe,
+                image_url: '',
                 description_es: editRecipe.description_es || editRecipe.description || '',
                 description_en: editRecipe.description_en || editRecipe.description || '',
                 instructions_es: editRecipe.instructions_es || editRecipe.instructions || '',
