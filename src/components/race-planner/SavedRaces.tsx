@@ -32,6 +32,8 @@ interface SavedCompetition {
     [key: string]: unknown;
   };
   created_at: string;
+  created_by?: string | null;
+  athlete_id?: string | null;
 }
 
 interface Props {
@@ -48,16 +50,26 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Record<string, RaceAssignment>>({});
   const [notifications, setNotifications] = useState<RaceAssignmentNotification[]>([]);
+  const [athleteNames, setAthleteNames] = useState<Record<string, string>>({});
+
+  const isCoach = profile?.role === 'coach' || profile?.role === 'admin';
 
   const loadRaces = async () => {
-    const athleteId = profile?.hub_user_id || user?.id || null;
-    if (!athleteId) { setLoading(false); return; }
+    const myId = profile?.hub_user_id || user?.id || null;
+    if (!myId) { setLoading(false); return; }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('competitions')
-      .select('id, sport, race_name, race_date, race_data, athlete_data, strategy_preferences, strategy_output, created_at')
-      .eq('athlete_id', athleteId)
+      .select('id, sport, race_name, race_date, race_data, athlete_data, strategy_preferences, strategy_output, created_at, created_by, athlete_id')
       .order('created_at', { ascending: false });
+
+    if (isCoach) {
+      query = query.or(`athlete_id.eq.${myId},created_by.eq.${myId}`);
+    } else {
+      query = query.eq('athlete_id', myId);
+    }
+
+    const { data, error } = await query;
 
     if (error) console.error('Load races error:', error);
     const loaded = (data as SavedCompetition[]) ?? [];
@@ -70,15 +82,41 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
       });
     });
 
-    const assigns = await getAssignmentsForAthlete(athleteId);
-    const assignMap: Record<string, RaceAssignment> = {};
-    for (const a of assigns) {
-      assignMap[a.competition_id] = a;
-    }
-    setAssignments(assignMap);
+    if (isCoach) {
+      const athleteIds = [...new Set(loaded.map((r) => r.athlete_id).filter((id): id is string => !!id && id !== myId))];
+      if (athleteIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('hub_user_id, full_name, email')
+          .in('hub_user_id', athleteIds);
+        const nameMap: Record<string, string> = {};
+        for (const p of profilesData ?? []) {
+          nameMap[p.hub_user_id] = p.full_name || p.email;
+        }
+        setAthleteNames(nameMap);
+      }
 
-    const notifs = await getUnreadNotifications(athleteId);
-    setNotifications(notifs);
+      const { data: myAssigns } = await supabase
+        .from('race_assignments')
+        .select('*')
+        .eq('coach_id', myId)
+        .in('status', ['active', 'edited']);
+      const assignMap: Record<string, RaceAssignment> = {};
+      for (const a of myAssigns ?? []) {
+        assignMap[a.competition_id] = a as RaceAssignment;
+      }
+      setAssignments(assignMap);
+    } else {
+      const assigns = await getAssignmentsForAthlete(myId);
+      const assignMap: Record<string, RaceAssignment> = {};
+      for (const a of assigns) {
+        assignMap[a.competition_id] = a;
+      }
+      setAssignments(assignMap);
+
+      const notifs = await getUnreadNotifications(myId);
+      setNotifications(notifs);
+    }
   };
 
   useEffect(() => { loadRaces(); }, []);
@@ -201,6 +239,9 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
             const assignment = assignments[race.id];
             const isCoachAssigned = !!assignment;
             const isNewBadge = assignment?.is_new;
+            const athleteId = race.athlete_id;
+            const athleteName = athleteId ? athleteNames[athleteId] : null;
+            const isCreatedByMe = isCoach && race.created_by === (profile?.hub_user_id || user?.id);
 
             return (
               <div
@@ -241,6 +282,15 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
                           >
                             <UserCheck className="w-3 h-3" />
                             {assignment?.status === 'edited' ? 'Updated by Coach' : 'Assigned by Coach'}
+                          </span>
+                        )}
+                        {isCreatedByMe && athleteName && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{ backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}
+                          >
+                            <UserCheck className="w-3 h-3" />
+                            {athleteName}
                           </span>
                         )}
                         {isNewBadge && (

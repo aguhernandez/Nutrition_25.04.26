@@ -215,6 +215,7 @@ export default function RacePlanner({
         .insert({
           user_id: null,
           athlete_id: athleteId,
+          created_by: (isCoach && selectedAthlete) ? (profile?.hub_user_id || user?.id || null) : null,
           sport: competition.sport,
           race_name: competition.raceName,
           race_data: competition.raceData,
