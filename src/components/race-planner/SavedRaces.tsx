@@ -10,6 +10,7 @@ import {
   getAssignmentsForAthlete,
   getUnreadNotifications,
   markNotificationsRead,
+  markRaceAssignmentDeleted,
   clearIsNewFlag,
   type RaceAssignment,
   type RaceAssignmentNotification,
@@ -158,6 +159,13 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
   const doDelete = async (id: string) => {
     setDeletingId(id);
     setDeleteErrorId(null);
+    const race = races.find((r) => r.id === id);
+    const assignment = assignments[id];
+
+    if (assignment) {
+      await markRaceAssignmentDeleted(id, race?.race_name ?? '', assignment.coach_name);
+    }
+
     const { data, error } = await supabase
       .from('competitions')
       .delete()
