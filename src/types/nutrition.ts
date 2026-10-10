@@ -45,13 +45,28 @@ export interface RaceNutritionRecipe {
   description?: string;
 }
 
+export interface RaceNutritionFood {
+  id: string;
+  name_es: string;
+  name_en: string;
+  category: string;
+  calories_per_100g: number;
+  carbs_per_100g: number;
+  protein_per_100g: number;
+  sodium_mg: number;
+  source: string;
+  usda_fdc_id: string | null;
+}
+
 export interface RaceNutritionAssignment {
   id: string;
   competition_id: string;
   product_id: string | null;
   recipe_id: string | null;
+  food_id: string | null;
   product: NutritionProduct | null;
   recipe: RaceNutritionRecipe | null;
+  food: RaceNutritionFood | null;
   timing_mode: 'time' | 'distance' | 'aid_station';
   timing_minutes: number | null;
   distance_marker: number | null;

@@ -166,6 +166,7 @@ type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
 export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner }: Props) {
   const { theme, language } = usePreferences();
+  const isSpanish = language === 'es';
   const { user, profile } = useAuth();
   const isDark = theme === 'dark';
 
@@ -216,14 +217,14 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
       id: item.id,
       timeMin: item.timing_minutes ?? 0,
       distanceLabel: item.timing_mode === 'distance' ? `${item.distance_marker} ${competition.raceData.distanceUnit}` : item.timing_mode === 'aid_station' ? (item.aid_station_name ?? 'Aid station') : '',
-      title: item.product?.full_name ?? item.recipe?.name ?? 'Nutrition source',
+      title: item.product?.full_name ?? (item.recipe ? (isSpanish ? item.recipe.name_es || item.recipe.name : item.recipe.name_en || item.recipe.name) : null) ?? (item.food ? (isSpanish ? item.food.name_es : item.food.name_en) : null) ?? 'Nutrition source',
       quantity: item.quantity,
-      calories: (item.product?.calories_per_serving ?? item.recipe?.calories_kcal ?? 0) * item.quantity,
-      carbsG: (item.product?.carbs_g ?? item.recipe?.carbs_g ?? 0) * item.quantity,
-      sodiumMg: (item.product?.sodium_mg ?? item.recipe?.sodium_mg ?? 0) * item.quantity,
+      calories: (item.product?.calories_per_serving ?? item.recipe?.calories_kcal ?? ((item.food?.calories_per_100g ?? 0) / 100)) * item.quantity,
+      carbsG: (item.product?.carbs_g ?? item.recipe?.carbs_g ?? ((item.food?.carbs_per_100g ?? 0) / 100)) * item.quantity,
+      sodiumMg: (item.product?.sodium_mg ?? item.recipe?.sodium_mg ?? ((item.food?.sodium_mg ?? 0) / 100)) * item.quantity,
       liquidMl: (item.product?.serving_size_ml ?? 0) * item.quantity,
     })));
-  }, [nutritionPlan, competition.raceData.distanceUnit]);
+  }, [nutritionPlan, competition.raceData.distanceUnit, isSpanish]);
 
   const printablePlan = editablePlan ? { ...editablePlan, executionItems } : undefined;
   const handleFullReport = () => printFullReport(competition, printablePlan);

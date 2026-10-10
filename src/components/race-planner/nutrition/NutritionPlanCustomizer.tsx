@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { NutritionCategory, NutritionProduct, RaceNutritionAssignment, RaceNutritionPlan, RaceNutritionRecipe } from '../../../types/nutrition';
+import type { NutritionCategory, NutritionProduct, RaceNutritionAssignment, RaceNutritionFood, RaceNutritionPlan, RaceNutritionRecipe } from '../../../types/nutrition';
 import type { Competition } from '../../../types/race';
 import { supabase } from '../../../lib/supabase';
 import { usePreferences } from '../../../lib/preferences';
@@ -40,7 +40,8 @@ interface Props {
 interface Draft {
   product: NutritionProduct | null;
   recipe: RaceNutritionRecipe | null;
-  sourceMode: 'product' | 'recipe';
+  food: RaceNutritionFood | null;
+  sourceMode: 'product' | 'recipe' | 'food';
   timingMode: TimingMode;
   timingMinutes: string;
   distanceMarker: string;
@@ -85,6 +86,7 @@ const categoryColors: Record<NutritionCategory, string> = {
 const emptyDraft: Draft = {
   product: null,
   recipe: null,
+  food: null,
   sourceMode: 'product',
   timingMode: 'time',
   timingMinutes: '45',
@@ -116,8 +118,8 @@ function getSortValue(assignment: RaceNutritionAssignment): number {
   return 100000 + new Date(assignment.created_at).getTime() / 100000000;
 }
 
-function getSourceName(assignment: RaceNutritionAssignment): string {
-  return assignment.product?.full_name ?? assignment.recipe?.name ?? 'Nutrition source';
+function getSourceName(assignment: RaceNutritionAssignment, isSpanish = false): string {
+  return assignment.product?.full_name ?? (assignment.recipe ? (isSpanish ? assignment.recipe.name_es || assignment.recipe.name : assignment.recipe.name_en || assignment.recipe.name) : null) ?? (assignment.food ? (isSpanish ? assignment.food.name_es : assignment.food.name_en) : null) ?? 'Nutrition source';
 }
 
 function getSourceCategory(assignment: RaceNutritionAssignment): NutritionCategory {
@@ -125,15 +127,15 @@ function getSourceCategory(assignment: RaceNutritionAssignment): NutritionCatego
 }
 
 function getSourceCalories(assignment: RaceNutritionAssignment): number {
-  return assignment.product?.calories_per_serving ?? assignment.recipe?.calories_kcal ?? 0;
+  return assignment.product?.calories_per_serving ?? assignment.recipe?.calories_kcal ?? ((assignment.food?.calories_per_100g ?? 0) / 100);
 }
 
 function getSourceCarbs(assignment: RaceNutritionAssignment): number {
-  return assignment.product?.carbs_g ?? assignment.recipe?.carbs_g ?? 0;
+  return assignment.product?.carbs_g ?? assignment.recipe?.carbs_g ?? ((assignment.food?.carbs_per_100g ?? 0) / 100);
 }
 
 function getSourceSodium(assignment: RaceNutritionAssignment): number {
-  return assignment.product?.sodium_mg ?? assignment.recipe?.sodium_mg ?? 0;
+  return assignment.product?.sodium_mg ?? assignment.recipe?.sodium_mg ?? ((assignment.food?.sodium_mg ?? 0) / 100);
 }
 
 function getSourceLiquidMl(assignment: RaceNutritionAssignment): number {
@@ -151,8 +153,11 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   const [collapsed, setCollapsed] = useState(false);
   const [products, setProducts] = useState<NutritionProduct[]>([]);
   const [recipes, setRecipes] = useState<RaceNutritionRecipe[]>([]);
+  const [foods, setFoods] = useState<RaceNutritionFood[]>([]);
+  const [foodCategoryFilter, setFoodCategoryFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState<NutritionCategory | 'all'>('all');
   const [recipeQuery, setRecipeQuery] = useState('');
+  const [foodQuery, setFoodQuery] = useState('');
   const [assignments, setAssignments] = useState<RaceNutritionAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -169,15 +174,18 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   useEffect(() => {
     let active = true;
     (async () => {
-      const [{ data: productData, error: productError }, { data: recipeData, error: recipeError }] = await Promise.all([
+      const [{ data: productData, error: productError }, { data: recipeData, error: recipeError }, { data: foodData, error: foodError }] = await Promise.all([
         supabase.from('nutrition_products').select('*').order('brand').order('product_name'),
         supabase.from('recipes').select('id, name, name_es, name_en, category, calories_kcal, carbs_g, sodium_mg, description').eq('is_public', true).order('name'),
+        supabase.from('foods_v2').select('id, name_es, name_en, category, calories_per_100g, carbs_per_100g, protein_per_100g, sodium_mg, source, usda_fdc_id').eq('source', 'usda').eq('is_supplement', false).order('name_en'),
       ]);
       if (productError) console.error('[NutritionPlanCustomizer] products error:', productError);
       if (recipeError) console.error('[NutritionPlanCustomizer] recipes error:', recipeError);
+      if (foodError) console.error('[NutritionPlanCustomizer] USDA foods error:', foodError);
       if (active) {
         setProducts((productData as NutritionProduct[]) ?? []);
         setRecipes((recipeData as RaceNutritionRecipe[]) ?? []);
+        setFoods((foodData as RaceNutritionFood[]) ?? []);
         setLoading(false);
       }
     })();
@@ -206,10 +214,10 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
       totalCarbsG: totalCarbs,
       totalSodiumMg: totalSodium,
       totalCaffeineM: totalCaffeine,
-      notes: assignments.map((item) => `${getMomentLabel(item, competition.raceData.distanceUnit)}: ${getSourceName(item)}`).join(' · '),
+      notes: assignments.map((item) => `${getMomentLabel(item, competition.raceData.distanceUnit)}: ${getSourceName(item, isSpanish)}`).join(' · '),
       timeline: assignments,
     });
-  }, [assignments, competition.raceData.distanceUnit, onChange]);
+  }, [assignments, competition.raceData.distanceUnit, isSpanish, onChange]);
 
   const sortedAssignments = useMemo(
     () => [...assignments].sort((a, b) => getSortValue(a) - getSortValue(b)),
@@ -237,7 +245,8 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     setDraft({
       product: item.product,
       recipe: item.recipe,
-      sourceMode: item.recipe ? 'recipe' : 'product',
+      food: item.food,
+      sourceMode: item.food ? 'food' : item.recipe ? 'recipe' : 'product',
       timingMode: item.timing_mode,
       timingMinutes: item.timing_minutes === null ? '' : String(item.timing_minutes),
       distanceMarker: item.distance_marker === null ? '' : String(item.distance_marker),
@@ -258,6 +267,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
   const saveAssignment = async () => {
     if (draft.sourceMode === 'product' && !draft.product) return;
     if (draft.sourceMode === 'recipe' && !draft.recipe) return;
+    if (draft.sourceMode === 'food' && !draft.food) return;
     if (!competition.id) {
       setMessage(isSpanish ? 'Guarda primero el plan de carrera para añadir momentos.' : 'Save the race plan first to add timeline moments.');
       return;
@@ -272,6 +282,7 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     const input = {
       productId: draft.sourceMode === 'product' ? draft.product?.id : null,
       recipeId: draft.sourceMode === 'recipe' ? draft.recipe?.id : null,
+      foodId: draft.sourceMode === 'food' ? draft.food?.id : null,
       timingMode: draft.timingMode,
       timingMinutes: draft.timingMinutes ? Number(draft.timingMinutes) : null,
       distanceMarker: draft.distanceMarker ? Number(draft.distanceMarker) : null,
@@ -307,6 +318,21 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
     const query = recipeQuery.trim().toLowerCase();
     return !query || [recipe.name, recipe.name_es, recipe.name_en, recipe.category, recipe.description].filter(Boolean).join(' ').toLowerCase().includes(query);
   });
+  const foodCategories = Array.from(new Set(foods.map((food) => food.category))).sort();
+  const visibleFoods = foods.filter((food) => {
+    if (foodCategoryFilter !== 'all' && food.category !== foodCategoryFilter) return false;
+    const query = foodQuery.trim().toLowerCase();
+    return !query || [food.name_en, food.name_es, food.category, food.usda_fdc_id].filter(Boolean).join(' ').toLowerCase().includes(query);
+  });
+  const foodCategoryLabel = (category: string) => {
+    const labels: Record<string, [string, string]> = {
+      meat_fish: ['Carnes/Pescados', 'Meat/Fish'], dairy: ['Lácteos', 'Dairy'], grain: ['Granos/Cereales', 'Grains/Cereals'],
+      fruit: ['Frutas', 'Fruit'], fruits_veg: ['Frutas/Verduras', 'Fruits/Vegetables'], vegetable: ['Verduras', 'Vegetables'],
+      legume: ['Legumbres', 'Legumes'], nuts: ['Frutos secos', 'Nuts'], fat: ['Grasas/Aceites', 'Fats/Oils'],
+      egg: ['Huevos', 'Eggs'], beverages: ['Bebidas', 'Beverages'], other: ['Otros', 'Other'],
+    };
+    return labels[category]?.[isSpanish ? 0 : 1] ?? category;
+  };
   const categoryOptions: Array<NutritionCategory | 'all'> = ['all', 'gel', 'drink', 'gummy', 'chew', 'bar', 'capsule', 'real_food', 'electrolyte_tablet'];
   const totalCalories = assignments.reduce((sum, item) => sum + getSourceCalories(item) * item.quantity, 0);
   const totalCarbs = assignments.reduce((sum, item) => sum + getSourceCarbs(item) * item.quantity, 0);
@@ -338,15 +364,15 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
 
           {showForm && (
             <div className="rounded-2xl p-4 space-y-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}>
-              <div className="flex items-center justify-between"><h3 className={`font-body font-semibold ${textPrimary}`}>{editingId ? (isSpanish ? 'Editar asignación' : 'Edit assignment') : (isSpanish ? 'Añadir suplemento al timeline' : 'Add supplement to timeline')}</h3><button onClick={closeForm} className={textMuted}><X className="w-4 h-4" /></button></div>
+              <div className="flex items-center justify-between"><h3 className={`font-body font-semibold ${textPrimary}`}>{editingId ? (isSpanish ? 'Editar asignación' : 'Edit assignment') : (isSpanish ? 'Añadir al timeline' : 'Add to timeline')}</h3><button onClick={closeForm} className={textMuted}><X className="w-4 h-4" /></button></div>
               <div className="flex gap-2">
-                {(['product', 'recipe'] as const).map((mode) => <button key={mode} onClick={() => setDraft((current) => ({ ...current, sourceMode: mode, product: mode === 'product' ? current.product : null, recipe: mode === 'recipe' ? current.recipe : null }))} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ backgroundColor: draft.sourceMode === mode ? '#facc15' : '#514163', color: draft.sourceMode === mode ? '#514163' : '#fff', border: `1px solid ${draft.sourceMode === mode ? '#facc15' : '#514163'}` }}>{mode === 'product' ? (isSpanish ? 'Suplementos' : 'Supplements') : (isSpanish ? 'Recetas' : 'Recipes')}</button>)}
+                {(['product', 'recipe', 'food'] as const).map((mode) => <button key={mode} onClick={() => setDraft((current) => ({ ...current, sourceMode: mode, product: mode === 'product' ? current.product : null, recipe: mode === 'recipe' ? current.recipe : null, food: mode === 'food' ? current.food : null, quantity: mode === 'food' ? (current.sourceMode === 'food' ? current.quantity : '100') : (current.sourceMode === 'food' ? '1' : current.quantity) }))} className="px-3 py-2 rounded-xl text-xs font-bold" style={{ backgroundColor: draft.sourceMode === mode ? '#facc15' : '#514163', color: draft.sourceMode === mode ? '#514163' : '#fff', border: `1px solid ${draft.sourceMode === mode ? '#facc15' : '#514163'}` }}>{mode === 'product' ? (isSpanish ? 'Suplementos' : 'Supplements') : mode === 'recipe' ? (isSpanish ? 'Recetas' : 'Recipes') : (isSpanish ? 'Alimentos' : 'Food')}</button>)}
               </div>
               {draft.sourceMode === 'product' ? <>
                 <div className="flex gap-1.5 overflow-x-auto pb-1">{categoryOptions.map((category) => <button key={category} onClick={() => setCategoryFilter(category)} className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: categoryFilter === category ? '#facc15' : 'transparent', color: categoryFilter === category ? '#713f12' : textSecondary, border: `1px solid ${categoryFilter === category ? '#facc15' : '#d1d5db'}` }}>{category === 'all' ? (isSpanish ? 'Todos' : 'All') : categoryLabels[category]}</button>)}</div>
                 <ProductSelector products={products} categories={categoryFilter === 'all' ? undefined : [categoryFilter]} selectedId={draft.product?.id} placeholder={loading ? 'Loading products...' : (isSpanish ? 'Buscar por nombre o marca, o explora la lista...' : 'Search by name or brand, or browse the list...')} onSelect={(product) => setDraft((current) => ({ ...current, product }))} />
                 {draft.product && <div className="flex flex-wrap gap-3 text-xs" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}><span>{draft.product.calories_per_serving} kcal</span><span>{draft.product.carbs_g}g carbs</span><span>{draft.product.sodium_mg}mg Na</span>{draft.product.caffeine_mg > 0 && <span className="text-amber-500">{draft.product.caffeine_mg}mg caffeine</span>}</div>}
-              </> : <div className="space-y-2"><input value={recipeQuery} onChange={(e) => setRecipeQuery(e.target.value)} placeholder={isSpanish ? 'Buscar recetas o explora la lista...' : 'Search recipes or browse the list...'} className="w-full rounded-xl px-3 py-2.5 text-sm" style={inputStyle} /><div className="max-h-56 overflow-y-auto rounded-xl" style={{ border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb' }}>{visibleRecipes.map((recipe) => <button key={recipe.id} onClick={() => setDraft((current) => ({ ...current, recipe }))} className="w-full text-left px-3 py-2.5 border-b last:border-b-0" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', backgroundColor: draft.recipe?.id === recipe.id ? 'rgba(250,204,21,0.15)' : 'transparent' }}><div className={`text-sm font-semibold ${textPrimary}`}>{isSpanish ? recipe.name_es || recipe.name : recipe.name_en || recipe.name}</div><div className={`text-xs ${textMuted}`}>{recipe.category} · {recipe.calories_kcal} kcal · {recipe.carbs_g}g carbs</div></button>)}{visibleRecipes.length === 0 && <div className={`p-4 text-sm ${textMuted}`}>{isSpanish ? 'No hay recetas públicas disponibles.' : 'No public recipes available.'}</div>}</div></div>}
+              </> : draft.sourceMode === 'recipe' ? <div className="space-y-2"><input value={recipeQuery} onChange={(e) => setRecipeQuery(e.target.value)} placeholder={isSpanish ? 'Buscar recetas o explora la lista...' : 'Search recipes or browse the list...'} className="w-full rounded-xl px-3 py-2.5 text-sm" style={inputStyle} /><div className="max-h-56 overflow-y-auto rounded-xl" style={{ border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb' }}>{visibleRecipes.map((recipe) => <button key={recipe.id} onClick={() => setDraft((current) => ({ ...current, recipe }))} className="w-full text-left px-3 py-2.5 border-b last:border-b-0" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', backgroundColor: draft.recipe?.id === recipe.id ? 'rgba(250,204,21,0.15)' : 'transparent' }}><div className={`text-sm font-semibold ${textPrimary}`}>{isSpanish ? recipe.name_es || recipe.name : recipe.name_en || recipe.name}</div><div className={`text-xs ${textMuted}`}>{recipe.category} · {recipe.calories_kcal} kcal · {recipe.carbs_g}g carbs</div></button>)}{visibleRecipes.length === 0 && <div className={`p-4 text-sm ${textMuted}`}>{isSpanish ? 'No hay recetas públicas disponibles.' : 'No public recipes available.'}</div>}</div></div> : <div className="space-y-2"><div className="flex gap-1.5 overflow-x-auto pb-1"><button onClick={() => setFoodCategoryFilter('all')} className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: foodCategoryFilter === 'all' ? '#facc15' : 'transparent', color: foodCategoryFilter === 'all' ? '#713f12' : textSecondary, border: `1px solid ${foodCategoryFilter === 'all' ? '#facc15' : '#d1d5db'}` }}>{isSpanish ? 'Todos' : 'All'}</button>{foodCategories.map((category) => <button key={category} onClick={() => setFoodCategoryFilter(category)} className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: foodCategoryFilter === category ? '#facc15' : 'transparent', color: foodCategoryFilter === category ? '#713f12' : textSecondary, border: `1px solid ${foodCategoryFilter === category ? '#facc15' : '#d1d5db'}` }}>{foodCategoryLabel(category)}</button>)}</div><input value={foodQuery} onChange={(e) => setFoodQuery(e.target.value)} placeholder={isSpanish ? 'Buscar alimento USDA o explora la lista...' : 'Search USDA foods or browse the list...'} className="w-full rounded-xl px-3 py-2.5 text-sm" style={inputStyle} /><div className="max-h-56 overflow-y-auto rounded-xl" style={{ border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb' }}>{visibleFoods.map((food) => <button key={food.id} onClick={() => setDraft((current) => ({ ...current, food, quantity: current.food ? current.quantity : '100' }))} className="w-full text-left px-3 py-2.5 border-b last:border-b-0" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#f3f4f6', backgroundColor: draft.food?.id === food.id ? 'rgba(250,204,21,0.15)' : 'transparent' }}><div className="flex items-center gap-2"><div className={`text-sm font-semibold ${textPrimary}`}>{isSpanish ? food.name_es : food.name_en}</div><span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ backgroundColor: '#eff6ff', color: '#2563eb' }}>USDA</span></div><div className={`text-xs ${textMuted}`}>{foodCategoryLabel(food.category)} · {food.calories_per_100g} kcal · {food.carbs_per_100g}g carbs / 100g</div></button>)}{visibleFoods.length === 0 && <div className={`p-4 text-sm ${textMuted}`}>{isSpanish ? 'No hay alimentos USDA en esta categoría.' : 'No USDA foods in this category.'}</div>}</div>{draft.food && <div className={`text-xs ${textSecondary}`}>{isSpanish ? 'Valores nutricionales por 100 g.' : 'Nutrition values per 100 g.'}</div>}</div>}
               {draft.sourceMode === 'recipe' && draft.recipe && <div className="flex flex-wrap gap-3 text-xs" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}><span>{draft.recipe.calories_kcal} kcal</span><span>{draft.recipe.carbs_g}g carbs</span><span>{draft.recipe.sodium_mg}mg Na</span></div>}
               <div className="grid grid-cols-3 gap-2">
                 {(['time', 'distance', 'aid_station'] as TimingMode[]).map((mode) => {
@@ -359,22 +385,22 @@ export default function NutritionPlanCustomizer({ competition, onChange }: Props
                 <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Tiempo manual desde la salida (minutos)' : 'Manual time from start (minutes)'}<input type="number" min="0" value={draft.timingMinutes} onChange={(e) => setDraft((current) => ({ ...current, timingMinutes: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
                 {draft.timingMode === 'distance' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? `Marcador (${competition.raceData.distanceUnit})` : `Marker (${competition.raceData.distanceUnit})`}<input type="number" min="0" max={competition.raceData.distance} step="0.1" value={draft.distanceMarker} onChange={(e) => setDraft((current) => ({ ...current, distanceMarker: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
                 {draft.timingMode === 'aid_station' && <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Nombre del puesto' : 'Checkpoint name'}<input value={draft.aidStationName} onChange={(e) => setDraft((current) => ({ ...current, aidStationName: e.target.value }))} placeholder={isSpanish ? 'Avituallamiento 1' : 'Aid station 1'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>}
-                <label className={`text-xs ${textSecondary}`}>{isSpanish ? 'Cantidad' : 'Quantity'}<input type="number" min="0.25" step="0.25" value={draft.quantity} onChange={(e) => setDraft((current) => ({ ...current, quantity: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
+                <label className={`text-xs ${textSecondary}`}>{draft.sourceMode === 'food' ? (isSpanish ? 'Cantidad (g)' : 'Quantity (g)') : (isSpanish ? 'Cantidad' : 'Quantity')}<input type="number" min={draft.sourceMode === 'food' ? '1' : '0.25'} step={draft.sourceMode === 'food' ? '1' : '0.25'} value={draft.quantity} onChange={(e) => setDraft((current) => ({ ...current, quantity: e.target.value }))} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
               </div>
               <label className={`block text-xs ${textSecondary}`}>{isSpanish ? 'Nota personalizada' : 'Personalized note'}<input value={draft.note} onChange={(e) => setDraft((current) => ({ ...current, note: e.target.value }))} placeholder={isSpanish ? 'Tomar con agua' : 'Take with water'} className="mt-1 w-full rounded-xl px-3 py-2 text-sm" style={inputStyle} /></label>
-              <div className="flex justify-end gap-2"><button onClick={closeForm} className="px-4 py-2 rounded-xl text-sm" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}>{isSpanish ? 'Cancelar' : 'Cancel'}</button><button onClick={saveAssignment} disabled={saving || (draft.sourceMode === 'product' ? !draft.product : !draft.recipe)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-[#514163] text-sm font-bold disabled:opacity-50"><Check className="w-4 h-4" />{saving ? (isSpanish ? 'Guardando...' : 'Saving...') : (isSpanish ? 'Guardar momento' : 'Save moment')}</button></div>
+              <div className="flex justify-end gap-2"><button onClick={closeForm} className="px-4 py-2 rounded-xl text-sm" style={{ color: isDark ? '#d1d5db' : '#6b7280' }}>{isSpanish ? 'Cancelar' : 'Cancel'}</button><button onClick={saveAssignment} disabled={saving || (draft.sourceMode === 'product' ? !draft.product : draft.sourceMode === 'recipe' ? !draft.recipe : !draft.food)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-[#514163] text-sm font-bold disabled:opacity-50"><Check className="w-4 h-4" />{saving ? (isSpanish ? 'Guardando...' : 'Saving...') : (isSpanish ? 'Guardar momento' : 'Save moment')}</button></div>
             </div>
           )}
 
-          <div className="flex items-center justify-between"><div><h3 className={`font-body font-semibold ${textPrimary}`}>{isSpanish ? 'Timeline de suplementos' : 'Supplement timeline'}</h3><p className={`text-xs mt-1 ${textMuted}`}>{isSpanish ? 'Combina productos y repítelos en los momentos que necesites.' : 'Mix products and repeat them at any moments you need.'}</p></div><button onClick={startAdd} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#514163] text-white text-xs font-bold hover:opacity-90"><Plus className="w-4 h-4" />{isSpanish ? 'Añadir' : 'Add supplement'}</button></div>
+          <div className="flex items-center justify-between"><div><h3 className={`font-body font-semibold ${textPrimary}`}>{isSpanish ? 'Timeline de nutrición' : 'Nutrition timeline'}</h3><p className={`text-xs mt-1 ${textMuted}`}>{isSpanish ? 'Combina suplementos, recetas y alimentos en los momentos que necesites.' : 'Add supplements, recipes, and foods at any moments you need.'}</p></div><button onClick={startAdd} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#514163] text-white text-xs font-bold hover:opacity-90"><Plus className="w-4 h-4" />{isSpanish ? 'Añadir' : 'Add to timeline'}</button></div>
 
           {assignments.length === 0 ? (
-            <div className="rounded-2xl py-10 text-center" style={{ backgroundColor: innerBg, border: isDark ? '1px dashed rgba(255,255,255,0.15)' : '1px dashed #d1d5db' }}><Droplets className={`w-8 h-8 mx-auto mb-2 ${textMuted}`} /><p className={`text-sm ${textSecondary}`}>{isSpanish ? 'Aún no hay suplementos asignados' : 'No supplements assigned yet'}</p><p className={`text-xs mt-1 ${textMuted}`}>{isSpanish ? 'Añade un gel, bebida, cápsula o comida a cualquier momento.' : 'Add a gel, drink, capsule, or food to any race moment.'}</p></div>
+            <div className="rounded-2xl py-10 text-center" style={{ backgroundColor: innerBg, border: isDark ? '1px dashed rgba(255,255,255,0.15)' : '1px dashed #d1d5db' }}><Droplets className={`w-8 h-8 mx-auto mb-2 ${textMuted}`} /><p className={`text-sm ${textSecondary}`}>{isSpanish ? 'Aún no hay alimentos ni suplementos asignados' : 'No foods or supplements assigned yet'}</p><p className={`text-xs mt-1 ${textMuted}`}>{isSpanish ? 'Añade un gel, bebida, cápsula o comida a cualquier momento.' : 'Add a gel, drink, capsule, or food to any race moment.'}</p></div>
           ) : (
             <div className="relative pl-7 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-yellow-300">
               {grouped.map((group) => {
                 const GroupIcon = group.mode === 'time' ? Clock3 : group.mode === 'distance' ? Route : MapPin;
-                return <div key={group.key} className="relative"><div className="absolute -left-7 top-2 w-5 h-5 rounded-full bg-yellow-400 border-4 border-white dark:border-[#1e1a2e] flex items-center justify-center"><GroupIcon className="w-2.5 h-2.5 text-[#514163]" /></div><div className="rounded-2xl p-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}><div className={`font-body font-bold text-sm mb-3 ${textPrimary}`}>{group.label}</div><div className="space-y-2">{group.items.map((item) => { const category = getSourceCategory(item); const Icon = categoryIcons[category]; const color = categoryColors[category]; return <div key={item.id} className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: cardBg, border: `1px solid ${color}55` }}><div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}18`, color }}><Icon className="w-4 h-4" /></div><div className="min-w-0 flex-1"><div className={`font-body font-semibold text-sm ${textPrimary}`}>{item.quantity} × {getSourceName(item)}</div><div className={`text-xs mt-0.5 ${textSecondary}`}>{categoryLabels[category]} · {getSourceCalories(item)} kcal · {getSourceCarbs(item) * item.quantity}g carbs · {getSourceSodium(item) * item.quantity}mg Na{getSourceCaffeine(item) > 0 && ` · ${getSourceCaffeine(item) * item.quantity}mg caffeine`}</div>{item.note && <div className={`text-xs mt-1 italic ${textMuted}`}>{item.note}</div>}</div><div className="flex gap-1"><button onClick={() => startEdit(item)} className={`p-1.5 rounded-lg ${textMuted}`} title={isSpanish ? 'Editar' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => removeAssignment(item.id)} className="p-1.5 rounded-lg text-red-400" title={isSpanish ? 'Eliminar' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button></div></div>; })}</div></div></div>;
+                return <div key={group.key} className="relative"><div className="absolute -left-7 top-2 w-5 h-5 rounded-full bg-yellow-400 border-4 border-white dark:border-[#1e1a2e] flex items-center justify-center"><GroupIcon className="w-2.5 h-2.5 text-[#514163]" /></div><div className="rounded-2xl p-4" style={{ backgroundColor: innerBg, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e5e7eb' }}><div className={`font-body font-bold text-sm mb-3 ${textPrimary}`}>{group.label}</div><div className="space-y-2">{group.items.map((item) => { const category = getSourceCategory(item); const Icon = categoryIcons[category]; const color = categoryColors[category]; return <div key={item.id} className="flex items-start gap-3 rounded-xl p-3" style={{ backgroundColor: cardBg, border: `1px solid ${color}55` }}><div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${color}18`, color }}><Icon className="w-4 h-4" /></div><div className="min-w-0 flex-1"><div className={`font-body font-semibold text-sm ${textPrimary}`}>{item.food ? `${item.quantity} g · ` : `${item.quantity} × `}{getSourceName(item, isSpanish)}</div><div className={`text-xs mt-0.5 ${textSecondary}`}>{item.food ? foodCategoryLabel(item.food.category) : categoryLabels[category]} · {Math.round(getSourceCalories(item) * item.quantity)} kcal · {Math.round(getSourceCarbs(item) * item.quantity)}g carbs · {Math.round(getSourceSodium(item) * item.quantity)}mg Na{getSourceCaffeine(item) > 0 && ` · ${getSourceCaffeine(item) * item.quantity}mg caffeine`}</div>{item.note && <div className={`text-xs mt-1 italic ${textMuted}`}>{item.note}</div>}</div><div className="flex gap-1"><button onClick={() => startEdit(item)} className={`p-1.5 rounded-lg ${textMuted}`} title={isSpanish ? 'Editar' : 'Edit'}><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => removeAssignment(item.id)} className="p-1.5 rounded-lg text-red-400" title={isSpanish ? 'Eliminar' : 'Delete'}><Trash2 className="w-3.5 h-3.5" /></button></div></div>; })}</div></div></div>;
               })}
             </div>
           )}

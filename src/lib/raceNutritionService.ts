@@ -1,11 +1,12 @@
 import { supabase } from './supabase';
-import type { NutritionProduct, RaceNutritionAssignment, RaceNutritionRecipe } from '../types/nutrition';
+import type { NutritionProduct, RaceNutritionAssignment, RaceNutritionFood, RaceNutritionRecipe } from '../types/nutrition';
 
 interface AssignmentRow {
   id: string;
   competition_id: string;
   product_id: string | null;
   recipe_id: string | null;
+  food_id: string | null;
   timing_mode: RaceNutritionAssignment['timing_mode'];
   timing_minutes: number | null;
   distance_marker: number | null;
@@ -16,19 +17,21 @@ interface AssignmentRow {
   updated_at: string;
   nutrition_products: NutritionProduct | NutritionProduct[] | null;
   recipes: RaceNutritionRecipe | RaceNutritionRecipe[] | null;
+  foods_v2: RaceNutritionFood | RaceNutritionFood[] | null;
 }
 
 function toAssignment(row: AssignmentRow): RaceNutritionAssignment | null {
   const product = Array.isArray(row.nutrition_products) ? row.nutrition_products[0] : row.nutrition_products;
   const recipe = Array.isArray(row.recipes) ? row.recipes[0] : row.recipes;
-  if (!product && !recipe) return null;
-  return { ...row, product: product ?? null, recipe: recipe ?? null };
+  const food = Array.isArray(row.foods_v2) ? row.foods_v2[0] : row.foods_v2;
+  if (!product && !recipe && !food) return null;
+  return { ...row, product: product ?? null, recipe: recipe ?? null, food: food ?? null };
 }
 
 export async function getRaceNutritionAssignments(competitionId: string): Promise<RaceNutritionAssignment[]> {
   const { data, error } = await supabase
     .from('race_nutrition_assignments')
-    .select('*, nutrition_products(*), recipes(*)')
+    .select('*, nutrition_products(*), recipes(*), foods_v2(*)')
     .eq('competition_id', competitionId)
     .order('timing_minutes', { ascending: true, nullsFirst: false })
     .order('distance_marker', { ascending: true, nullsFirst: false })
@@ -45,6 +48,7 @@ export async function createRaceNutritionAssignment(input: {
   competitionId: string;
   productId?: string | null;
   recipeId?: string | null;
+  foodId?: string | null;
   timingMode: RaceNutritionAssignment['timing_mode'];
   timingMinutes?: number | null;
   distanceMarker?: number | null;
@@ -58,6 +62,7 @@ export async function createRaceNutritionAssignment(input: {
       competition_id: input.competitionId,
       product_id: input.productId ?? null,
       recipe_id: input.recipeId ?? null,
+      food_id: input.foodId ?? null,
       timing_mode: input.timingMode,
       timing_minutes: input.timingMode === 'time' ? input.timingMinutes : null,
       distance_marker: input.timingMode === 'distance' ? input.distanceMarker : null,
@@ -65,7 +70,7 @@ export async function createRaceNutritionAssignment(input: {
       quantity: input.quantity,
       note: input.note.trim(),
     })
-    .select('*, nutrition_products(*), recipes(*)')
+    .select('*, nutrition_products(*), recipes(*), foods_v2(*)')
     .maybeSingle();
 
   if (error) {
@@ -84,6 +89,7 @@ export async function updateRaceNutritionAssignment(
     .update({
       product_id: input.productId ?? null,
       recipe_id: input.recipeId ?? null,
+      food_id: input.foodId ?? null,
       timing_mode: input.timingMode,
       timing_minutes: input.timingMode === 'time' ? input.timingMinutes : null,
       distance_marker: input.timingMode === 'distance' ? input.distanceMarker : null,
@@ -93,7 +99,7 @@ export async function updateRaceNutritionAssignment(
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .select('*, nutrition_products(*), recipes(*)')
+    .select('*, nutrition_products(*), recipes(*), foods_v2(*)')
     .maybeSingle();
 
   if (error) {
