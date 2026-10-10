@@ -302,7 +302,9 @@ function calcPreComp(
   const plan: DayNutrition[] = [];
   const baseCarbsGkg = prefs.trainingVolume === 'high' ? 5 : prefs.trainingVolume === 'moderate' ? 4.5 : 4;
 
-  if (loadingNeeded) {
+  if (days === 0) {
+    // The athlete opted out of pre-race days; keep race-day guidance below.
+  } else if (loadingNeeded) {
     if (days >= 3) {
       plan.push(buildDayPlan('D-3 (3 days out)', baseCarbsGkg, athlete.bodyWeightKg, false));
       plan.push(buildDayPlan('D-2 (2 days out)', baseCarbsGkg + 2.5, athlete.bodyWeightKg, true));
@@ -326,7 +328,9 @@ function calcPreComp(
     carbsG: raceDayCarbs,
   };
 
-  const notes = loadingNeeded
+  const notes = days === 0
+    ? 'No pre-race nutrition planning selected. Race-day nutrition guidance is still included.'
+    : loadingNeeded
     ? `${days}-day CHO loading protocol. Prioritize carb density over volume. Reduce fiber, fat, and raw vegetables. Expect 0.5-1.5kg weight gain from glycogen and water storage – completely normal. Stay well hydrated.`
     : 'Short race: CHO loading is not necessary. Focus on a quality pre-race meal and being well hydrated.';
 

@@ -144,8 +144,8 @@ export default function Step3Strategy({ data, onChange }: Props) {
         <div className="space-y-4">
           <div>
             <p className="font-body text-xs text-[#9ca3af] mb-3">How many days of pre-race nutrition planning do you want?</p>
-            <div className="grid grid-cols-3 gap-2">
-              {([1, 2, 3] as const).map((d) => (
+            <div className="grid grid-cols-4 gap-2">
+              {([0, 1, 2, 3] as const).map((d) => (
                 <button
                   key={d}
                   onClick={() => update('preCompDays', d)}
@@ -154,7 +154,7 @@ export default function Step3Strategy({ data, onChange }: Props) {
                 >
                   <div className="text-lg font-bold">{d}</div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    {d === 1 ? 'Day before' : d === 2 ? '2 days out' : '3 days out'}
+                    {d === 0 ? 'None' : d === 1 ? 'Day before' : d === 2 ? '2 days out' : '3 days out'}
                   </div>
                 </button>
               ))}

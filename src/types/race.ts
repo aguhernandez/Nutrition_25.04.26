@@ -46,7 +46,7 @@ export interface StrategyPreferences {
   caffeineYes: boolean;
   gutTrained: boolean;
   choType: 'liquid' | 'solid' | 'gel' | 'mix';
-  preCompDays: 1 | 2 | 3;
+  preCompDays: 0 | 1 | 2 | 3;
   trainingVolume: 'low' | 'moderate' | 'high';
   giTrainingWanted: boolean;
 }
