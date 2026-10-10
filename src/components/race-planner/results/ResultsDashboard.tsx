@@ -18,7 +18,7 @@ import {
   Send,
   AlertCircle,
 } from 'lucide-react';
-import type { Competition, StrategyOutput, RaceCatalogEntry, HydrationStation } from '../../../types/race';
+import type { Competition, StrategyOutput, RaceCatalogEntry, HydrationStation, ElevationPoint } from '../../../types/race';
 import RaceCourseView from '../course/RaceCourseView';
 import type { EditablePlan, RaceExecutionItem } from '../../../types/editablePlan';
 import type { RaceNutritionPlan } from '../../../types/nutrition';
@@ -27,7 +27,7 @@ import { printFullReport, printCueCard, buildSegments } from '../../../utils/gen
 import EditableSegmentTable from './EditableSegmentTable';
 import EditableRecommendationsPanel from './EditableRecommendations';
 import NutritionPlanCustomizer from '../nutrition/NutritionPlanCustomizer';
-import { generateHydrationStations, generateElevationProfile } from '../../../utils/elevationGenerator';
+import { generateHydrationStations } from '../../../utils/elevationGenerator';
 import { usePreferences } from '../../../lib/preferences';
 import { useAuth } from '../../../lib/auth';
 import { pushRacePlan } from '../../../lib/hubApi';
@@ -40,6 +40,9 @@ interface Props {
   hideSendToHub?: boolean;
   onSendToHubResult?: (status: 'success' | 'error') => void;
   coachSendBanner?: React.ReactNode;
+  savedElevationPoints?: ElevationPoint[];
+  savedHydrationStations?: HydrationStation[];
+  onElevationChange?: (points: ElevationPoint[], stations: HydrationStation[]) => void;
 }
 
 function StatCard({ label, value, unit, color, isDark }: { label: string; value: string | number; unit?: string; color: string; isDark: boolean }) {
@@ -164,7 +167,7 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
 
 type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
-export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner }: Props) {
+export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner, savedElevationPoints, savedHydrationStations, onElevationChange }: Props) {
   const { theme, language } = usePreferences();
   const isSpanish = language === 'es';
   const { user, profile } = useAuth();
@@ -199,10 +202,10 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
     const distKm = competition.raceData.distanceUnit === 'miles'
       ? competition.raceData.distance * 1.60934
       : competition.raceData.distance;
-    const seed = competition.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const pts = generateElevationProfile(distKm, competition.raceData.elevationGain || 0, seed);
-    setHydrationStations(generateHydrationStations(distKm, pts, catalogEntry));
-  }, [competition]);
+    if (savedElevationPoints && savedElevationPoints.length > 0) {
+      setHydrationStations(savedHydrationStations ?? generateHydrationStations(distKm, savedElevationPoints, catalogEntry));
+    }
+  }, [competition, savedElevationPoints, savedHydrationStations]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -447,7 +450,13 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
       </div>
 
       <div className="mb-4">
-        <RaceCourseView raceData={competition.raceData} catalogEntry={catalogEntry} />
+        <RaceCourseView
+          raceData={competition.raceData}
+          catalogEntry={catalogEntry}
+          savedElevationPoints={savedElevationPoints}
+          savedHydrationStations={savedHydrationStations}
+          onElevationChange={onElevationChange}
+        />
       </div>
 
       <div className="mb-4">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mountain, Droplets, Save, Loader2, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import type { RaceData, RaceCatalogEntry, HydrationStation, ElevationPoint } from '../../../types/race';
-import { generateElevationProfile, generateHydrationStations } from '../../../utils/elevationGenerator';
+import { generateHydrationStations } from '../../../utils/elevationGenerator';
 import ElevationProfile from './ElevationProfile';
 import HydrationStationEditor from './HydrationStationEditor';
 import { supabase } from '../../../lib/supabase';
@@ -11,11 +11,20 @@ import { usePreferences } from '../../../lib/preferences';
 interface Props {
   raceData: RaceData;
   catalogEntry?: RaceCatalogEntry;
+  savedElevationPoints?: ElevationPoint[];
+  savedHydrationStations?: HydrationStation[];
+  onElevationChange?: (points: ElevationPoint[], stations: HydrationStation[]) => void;
 }
 
 type ViewTab = 'elevation' | 'stations';
 
-export default function RaceCourseView({ raceData, catalogEntry }: Props) {
+export default function RaceCourseView({
+  raceData,
+  catalogEntry,
+  savedElevationPoints,
+  savedHydrationStations,
+  onElevationChange,
+}: Props) {
   const { user } = useAuth();
   const { theme } = usePreferences();
   const isDark = theme === 'dark';
@@ -37,7 +46,13 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
   useEffect(() => {
     let cancelled = false;
     async function loadCourseData() {
-      if (catalogEntry) {
+      let pts: ElevationPoint[] = [];
+      let stns: HydrationStation[] = [];
+
+      if (savedElevationPoints && savedElevationPoints.length > 0) {
+        pts = savedElevationPoints;
+        stns = savedHydrationStations ?? [];
+      } else if (catalogEntry) {
         const year = raceData.raceDate ? new Date(raceData.raceDate).getFullYear() : new Date().getFullYear();
         const [{ data: elevData }, { data: aidData }, { data: profileData }] = await Promise.all([
           supabase.from('race_elevation_data').select('elevation_points').eq('race_catalog_id', catalogEntry.id).maybeSingle(),
@@ -47,19 +62,14 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
 
         if (cancelled) return;
 
-        let pts: ElevationPoint[] = [];
         if (elevData?.elevation_points && (elevData.elevation_points as ElevationPoint[]).length > 0) {
           pts = elevData.elevation_points as ElevationPoint[];
         } else if (profileData?.elevation_points && (profileData.elevation_points as ElevationPoint[]).length > 0) {
           pts = profileData.elevation_points as ElevationPoint[];
-        } else {
-          const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-          pts = generateElevationProfile(distanceKm, elevGain, seed);
         }
-        setElevationPoints(pts);
 
         if (aidData && aidData.length > 0) {
-          const aidStations: HydrationStation[] = aidData.map((a) => ({
+          stns = aidData.map((a) => ({
             id: a.id,
             km: Number(a.distance_km),
             label: a.name,
@@ -68,24 +78,37 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
             supplyTypes: a.supply_types as string[] ?? [],
             services: a.services as string[] ?? [],
           }));
-          setStations(aidStations);
           if (profileData?.id) setProfileId(profileData.id);
         } else if (profileData) {
           setProfileId(profileData.id);
-          setStations((profileData.hydration_stations as HydrationStation[]) ?? []);
-        } else {
-          setStations(generateHydrationStations(distanceKm, pts, catalogEntry));
+          stns = (profileData.hydration_stations as HydrationStation[]) ?? [];
         }
-      } else {
-        const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-        const pts = generateElevationProfile(distanceKm, elevGain, seed);
-        setElevationPoints(pts);
-        setStations(generateHydrationStations(distanceKm, pts, catalogEntry));
       }
+
+      if (pts.length === 0) {
+        return;
+      }
+      if (stns.length === 0 && pts.length > 0) {
+        stns = generateHydrationStations(distanceKm, pts, catalogEntry);
+      }
+
+      if (cancelled) return;
+      setElevationPoints(pts);
+      setStations(stns);
     }
     loadCourseData();
     return () => { cancelled = true; };
-  }, [raceData.raceName, distanceKm, elevGain, catalogEntry?.id]);
+  }, [raceData.raceName, distanceKm, elevGain, catalogEntry?.id, savedElevationPoints, savedHydrationStations]);
+
+  function updatePoints(newPoints: ElevationPoint[]) {
+    setElevationPoints(newPoints);
+    onElevationChange?.(newPoints, stations);
+  }
+
+  function updateStations(newStations: HydrationStation[]) {
+    setStations(newStations);
+    onElevationChange?.(elevationPoints, newStations);
+  }
 
   async function handleSave() {
     if (!user || !catalogEntry) return;
@@ -110,13 +133,6 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
     setSaving(false);
     setSavedOk(true);
     setTimeout(() => setSavedOk(false), 3000);
-  }
-
-  function handleReset() {
-    const seed = raceData.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const pts = generateElevationProfile(distanceKm, elevGain, seed);
-    setElevationPoints(pts);
-    setStations(generateHydrationStations(distanceKm, pts, catalogEntry));
   }
 
   const maxElev = elevationPoints.length > 0 ? Math.max(...elevationPoints.map((p) => p.elevationM)) : 0;
@@ -172,7 +188,7 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
         </div>
       </button>
 
-      {!collapsed && (
+      {!collapsed && elevationPoints.length > 0 && (
         <div className="px-6 pb-6 space-y-4">
           {/* Tab bar */}
           <div className="flex gap-1 rounded-xl p-1 w-fit" style={{ backgroundColor: tabBarBg }}>
@@ -239,12 +255,6 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
                   totalElevationGainM={Math.round(climbCount)}
                 />
               )}
-
-              {!catalogEntry && (
-                <p className={`text-xs mt-3 text-center ${textMuted}`}>
-                  Profile is algorithmically generated from total elevation gain. Select a race from the catalog for more accurate data.
-                </p>
-              )}
             </div>
           )}
 
@@ -271,18 +281,11 @@ export default function RaceCourseView({ raceData, catalogEntry }: Props) {
                     <p className={`text-sm font-semibold ${textPrimary}`}>Edit Hydration Stations</p>
                     <p className={`text-xs mt-0.5 ${textMuted}`}>Aid station locations may change year to year. Adjust as needed.</p>
                   </div>
-                  <button
-                    onClick={handleReset}
-                    className={`flex items-center gap-1.5 text-xs transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Reset to default
-                  </button>
                 </div>
                 <HydrationStationEditor
                   stations={stations}
                   distanceKm={distanceKm}
-                  onChange={setStations}
+                  onChange={updateStations}
                 />
               </div>
 

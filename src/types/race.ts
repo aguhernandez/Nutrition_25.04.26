@@ -26,6 +26,9 @@ export interface RaceData {
   humidity: number;
   altitude: number;
   raceDate: string;
+  elevationPoints?: ElevationPoint[];
+  hydrationStations?: HydrationStation[];
+  catalogRaceId?: string;
 }
 
 export interface AthleteData {

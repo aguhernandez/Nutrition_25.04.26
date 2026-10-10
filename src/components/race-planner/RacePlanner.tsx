@@ -7,6 +7,8 @@ import type {
   StrategyPreferences,
   Competition,
   RaceCatalogEntry,
+  ElevationPoint,
+  HydrationStation,
 } from '../../types/race';
 import { calculateRaceStrategy } from '../../engine/raceCalculationEngine';
 import { supabase } from '../../lib/supabase';
@@ -151,6 +153,8 @@ export default function RacePlanner({
   );
   const [pushingToHub, setPushingToHub] = useState(false);
   const [pushResult, setPushResult] = useState<'success' | 'error' | null>(null);
+  const [elevationPoints, setElevationPoints] = useState<ElevationPoint[] | undefined>(undefined);
+  const [hydrationStations, setHydrationStations] = useState<HydrationStation[] | undefined>(undefined);
 
   const effectiveAthleteId = selectedAthlete?.hub_user_id || selectedAthlete?.id || targetAthleteId || profile?.hub_user_id || user?.id || null;
   const effectiveAthleteEmail = selectedAthlete?.email || targetAthleteEmail || profile?.email || null;
@@ -169,6 +173,9 @@ export default function RacePlanner({
     entry?: RaceCatalogEntry,
   ) => {
     setCatalogEntry(entry);
+    if (entry) {
+      setCompetition((prev) => prev ? { ...prev, raceData: { ...prev.raceData, catalogRaceId: entry.id } } : prev);
+    }
     const sport = selectedSport!;
     const output = calculateRaceStrategy(sport, raceData, athleteData, strategy);
     const comp: Competition = {
@@ -184,9 +191,19 @@ export default function RacePlanner({
     setStep('results');
   };
 
+  const handleElevationChange = (pts: ElevationPoint[], stns: HydrationStation[]) => {
+    setElevationPoints(pts);
+    setHydrationStations(stns);
+  };
+
   const handleSave = async () => {
     if (!competition) return;
     const athleteId = effectiveAthleteId;
+    const raceDataToSave = {
+      ...competition.raceData,
+      elevationPoints: elevationPoints ?? competition.raceData.elevationPoints,
+      hydrationStations: hydrationStations ?? competition.raceData.hydrationStations,
+    };
 
     if (savedId) {
       const { error } = await supabase
@@ -194,7 +211,7 @@ export default function RacePlanner({
         .update({
           sport: competition.sport,
           race_name: competition.raceName,
-          race_data: competition.raceData,
+          race_data: raceDataToSave,
           athlete_data: competition.athleteData,
           strategy_preferences: competition.strategyPreferences,
           strategy_output: competition.strategyOutput,
@@ -218,7 +235,7 @@ export default function RacePlanner({
           created_by: (isCoach && selectedAthlete) ? (profile?.hub_user_id || user?.id || null) : null,
           sport: competition.sport,
           race_name: competition.raceName,
-          race_data: competition.raceData,
+          race_data: raceDataToSave,
           athlete_data: competition.athleteData,
           strategy_preferences: competition.strategyPreferences,
           strategy_output: competition.strategyOutput,
@@ -331,6 +348,9 @@ export default function RacePlanner({
               setPushResult(status);
               setTimeout(() => setPushResult(null), 4000);
             }}
+            savedElevationPoints={elevationPoints ?? competition.raceData.elevationPoints}
+            savedHydrationStations={hydrationStations ?? competition.raceData.hydrationStations}
+            onElevationChange={handleElevationChange}
             coachSendBanner={isCoach && savedId && selectedAthlete ? (
               <div
                 className="mt-4 mb-2 rounded-2xl p-5 flex items-center justify-between"

@@ -1,7 +1,7 @@
 import type { Competition, StrategyOutput, DayMeal, RiskFlag, CaffeineDose, ElevationPoint } from '../types/race';
 import type { EditablePlan, EditableSegment, RaceExecutionItem } from '../types/editablePlan';
 import { getSportConfig } from '../config/sports';
-import { generateElevationProfile, generateHydrationStations } from './elevationGenerator';
+import { generateHydrationStations } from './elevationGenerator';
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -520,10 +520,9 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
   const logoURI = await toDataURI('/Asciendelogo.png');
   const iconURI = await toDataURI('/AppIcon.png');
 
-  // Elevation
-  const seed = competition.raceName.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const elevPts = generateElevationProfile(distKm, competition.raceData.elevationGain || 0, seed);
-  const stationsRaw = generateHydrationStations(distKm, elevPts, undefined);
+  // Elevation — use saved points if available, otherwise leave empty
+  const elevPts: ElevationPoint[] = competition.raceData.elevationPoints ?? [];
+  const stationsRaw = competition.raceData.hydrationStations ?? generateHydrationStations(distKm, elevPts, undefined);
   const stationData = stationsRaw.map(s => ({ km: s.km, hasFood: s.hasFood }));
   const maxElev = elevPts.length ? Math.max(...elevPts.map(p => p.elevationM)) : 0;
   const minElev = elevPts.length ? Math.min(...elevPts.map(p => p.elevationM)) : 0;
