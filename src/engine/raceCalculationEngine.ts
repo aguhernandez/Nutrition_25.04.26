@@ -121,13 +121,18 @@ function calcCarbs(
       recommendedIntakeGH = 90;
     }
   }
+  if (prefs.carbTargetGH !== undefined && Number.isFinite(prefs.carbTargetGH)) {
+    recommendedIntakeGH = Math.max(0, Math.min(120, prefs.carbTargetGH));
+  }
   const totalCarbsG = Math.round(recommendedIntakeGH * durationH);
   const choType = prefs.choType;
   const sources: string[] = [];
 
   const requiresMixedCHO = recommendedIntakeGH >= 90;
 
-  if (choType === 'liquid') {
+  if (recommendedIntakeGH === 0) {
+    sources.push('No carbohydrate intake planned. Follow the hydration strategy for this race.');
+  } else if (choType === 'liquid') {
     sources.push('Isotonic sports drink (6-8% carb) as primary fuel source');
     if (recommendedIntakeGH >= 60) sources.push('Carb-electrolyte drink: 500-750mL per hour');
     if (requiresMixedCHO) sources.push('REQUIRED: Use maltodextrin + fructose (2:1 ratio) drink – single-source glucose drinks are capped at ~60g/h (Jentjens & Jeukendrup 2005)');
@@ -156,7 +161,9 @@ function calcCarbs(
   }
 
   let timing = '';
-  if (durationH < 1.5) {
+  if (recommendedIntakeGH === 0) {
+    timing = 'No carbohydrate fueling scheduled.';
+  } else if (durationH < 1.5) {
     timing = 'Start fueling at 20 min. Take fuel every 30-40 min. Small amounts only.';
   } else if (durationH < 3) {
     timing = 'First fuel at 15-20 min, then every 25-30 min. Ramp up if pace increases.';

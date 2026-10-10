@@ -1,5 +1,6 @@
 import type { StrategyPreferences } from '../../../types/race';
 import { Target, ShieldCheck, Zap, Coffee, Droplets, Cookie, Layers, Brain, Calendar } from 'lucide-react';
+import { usePreferences } from '../../../lib/preferences';
 
 interface Props {
   data: StrategyPreferences;
@@ -55,8 +56,11 @@ function Toggle({ label, description, checked, onChange }: { label: string; desc
 }
 
 export default function Step3Strategy({ data, onChange }: Props) {
+  const { language } = usePreferences();
+  const isSpanish = language === 'es';
   const update = <K extends keyof StrategyPreferences>(key: K, value: StrategyPreferences[K]) =>
     onChange({ ...data, [key]: value });
+  const targetCarbPreset = (target: StrategyPreferences['target']) => target === 'performance' ? 120 : target === 'finish_strong' ? 90 : 60;
 
   return (
     <div className="space-y-8">
@@ -77,7 +81,7 @@ export default function Step3Strategy({ data, onChange }: Props) {
             return (
               <button
                 key={opt.value}
-                onClick={() => update('target', opt.value)}
+                onClick={() => onChange({ ...data, target: opt.value, carbTargetGH: targetCarbPreset(opt.value) })}
                 className="relative p-5 rounded-2xl border-2 text-left transition-all duration-200"
                 style={selected ? { backgroundColor: opt.bg, borderColor: '#fdda36', boxShadow: '0 4px 14px rgba(253,218,54,0.25)' } : { backgroundColor: '#f9fafb', borderColor: '#e5e7eb' }}
               >
@@ -90,6 +94,34 @@ export default function Step3Strategy({ data, onChange }: Props) {
               </button>
             );
           })}
+        </div>
+        <div className="mt-4 rounded-2xl border-2 p-4 sm:p-5" style={{ backgroundColor: 'rgba(253,218,54,0.1)', borderColor: '#fdda36' }}>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl" role="img" aria-label={isSpanish ? 'Plátano' : 'Banana'}>🍌</span>
+              <div>
+                <div className="font-body font-semibold text-sm text-[#514163]">{isSpanish ? 'Objetivo de carbohidratos' : 'Carbohydrate target'}</div>
+                <div className="font-body text-xs text-[#9ca3af]">{isSpanish ? 'Ajusta la cantidad durante la carrera' : 'Adjust your intake during the race'}</div>
+              </div>
+            </div>
+            <div className="text-right whitespace-nowrap">
+              <span className="font-heading text-2xl font-bold text-[#514163]">{data.carbTargetGH ?? targetCarbPreset(data.target)}</span>
+              <span className="ml-1 text-xs font-semibold text-[#6b7280]">g/h</span>
+            </div>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={120}
+            step={1}
+            value={data.carbTargetGH ?? targetCarbPreset(data.target)}
+            onChange={(event) => update('carbTargetGH', Number(event.target.value))}
+            aria-label={isSpanish ? 'Objetivo de carbohidratos en gramos por hora' : 'Carbohydrate target in grams per hour'}
+            className="w-full h-2 rounded-full cursor-pointer accent-yellow-400"
+            style={{ accentColor: '#fdda36' }}
+          />
+          <div className="flex justify-between mt-1 font-body text-[10px] text-[#9ca3af]"><span>0</span><span>30</span><span>60</span><span>90</span><span>120 g/h</span></div>
+          <p className="mt-2 font-body text-xs text-[#6b7280]">{isSpanish ? 'El total del plan se calcula multiplicando este objetivo por la duración prevista de la carrera.' : 'The plan total is calculated by multiplying this target by your expected race duration.'}</p>
         </div>
       </div>
 

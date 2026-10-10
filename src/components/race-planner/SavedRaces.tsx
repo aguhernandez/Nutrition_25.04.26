@@ -11,7 +11,6 @@ import {
   getUnreadNotifications,
   markNotificationsRead,
   clearIsNewFlag,
-  markRaceAssignmentDeleted,
   type RaceAssignment,
   type RaceAssignmentNotification,
 } from '../../lib/raceAssignmentService';
@@ -48,6 +47,7 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
   const [tagsByRaceId, setTagsByRaceId] = useState<Record<string, Tag[]>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteErrorId, setDeleteErrorId] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Record<string, RaceAssignment>>({});
   const [notifications, setNotifications] = useState<RaceAssignmentNotification[]>([]);
   const [athleteNames, setAthleteNames] = useState<Record<string, string>>({});
@@ -152,20 +152,25 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
     onEdit(competition);
   };
 
-  const confirmDelete = (id: string) => setDeleteConfirmId(id);
-  const cancelDelete = () => setDeleteConfirmId(null);
+  const confirmDelete = (id: string) => { setDeleteErrorId(null); setDeleteConfirmId(id); };
+  const cancelDelete = () => { setDeleteConfirmId(null); setDeleteErrorId(null); };
 
   const doDelete = async (id: string) => {
     setDeletingId(id);
-    const race = races.find((r) => r.id === id);
-    const assignment = assignments[id];
-
-    if (assignment) {
-      await markRaceAssignmentDeleted(id, race?.race_name ?? '', assignment.coach_name);
+    setDeleteErrorId(null);
+    const { data, error } = await supabase
+      .from('competitions')
+      .delete()
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+    if (error || !data) {
+      console.error('Delete race error:', error);
+      setDeleteErrorId(id);
+      setDeletingId(null);
+      return;
     }
-
-    const { error } = await supabase.from('competitions').delete().eq('id', id);
-    if (!error) {
+    if (data) {
       setRaces((prev) => prev.filter((r) => r.id !== id));
       setTagsByRaceId((prev) => { const n = { ...prev }; delete n[id]; return n; });
       setAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
@@ -343,7 +348,7 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
                 {/* Delete confirmation */}
                 {isConfirmingDelete && (
                   <div className="mb-4 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
-                    <span className="font-body text-xs text-red-600 flex-1">Delete this race plan? This cannot be undone.</span>
+                    <span className="font-body text-xs text-red-600 flex-1">{deleteErrorId === race.id ? 'Could not delete this race. Check your connection and try again.' : 'Delete this race plan? This cannot be undone.'}</span>
                     <button
                       onClick={() => doDelete(race.id)}
                       disabled={isDeleting}

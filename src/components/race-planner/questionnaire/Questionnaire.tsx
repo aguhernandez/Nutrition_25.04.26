@@ -30,7 +30,7 @@ const defaultAthleteData: AthleteData = {
 };
 
 const defaultStrategy: StrategyPreferences = {
-  target: 'finish_strong', caffeineYes: false, gutTrained: false, choType: 'mix',
+  target: 'finish_strong', carbTargetGH: 90, caffeineYes: false, gutTrained: false, choType: 'mix',
   preCompDays: 2, trainingVolume: 'moderate', giTrainingWanted: false,
 };
 

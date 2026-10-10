@@ -43,6 +43,7 @@ export interface AthleteData {
 
 export interface StrategyPreferences {
   target: 'performance' | 'finish_strong' | 'safe';
+  carbTargetGH?: number;
   caffeineYes: boolean;
   gutTrained: boolean;
   choType: 'liquid' | 'solid' | 'gel' | 'mix';
