@@ -24,6 +24,8 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<RaceCatalogEntry | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,6 +80,37 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
     setSelected(null);
     setQuery('');
     setOpen(false);
+    setAiError(null);
+  };
+
+  const handleAiLookup = async () => {
+    const term = query.trim();
+    if (term.length < 3 || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/race-info-lookup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ query: term, sport }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.race?.id) {
+        setAiError(body?.error ?? 'Could not look up this race. Try again.');
+        return;
+      }
+      const race = body.race as RaceCatalogEntry;
+      setAllRaces((prev) => (prev.some((r) => r.id === race.id) ? prev : [...prev, race]));
+      handleSelect(race);
+    } catch {
+      setAiError('Could not reach the lookup service. Check your connection and try again.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   return (
@@ -139,8 +172,18 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
             : 'bg-white border-gray-200'
         }`}>
           {filtered.length === 0 ? (
-            <div className={`px-4 py-6 text-center text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              No races found for &ldquo;{query}&rdquo;
+            <div className={`px-4 py-6 text-center text-sm space-y-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p>No races found for &ldquo;{query}&rdquo;</p>
+              {query.trim().length >= 3 && (
+                <button
+                  onMouseDown={handleAiLookup}
+                  disabled={aiLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-60"
+                >
+                  {aiLoading ? 'Searching the web...' : 'Look up with AI and add'}
+                </button>
+              )}
+              {aiError && <p className="text-xs text-red-400">{aiError}</p>}
             </div>
           ) : (
             <div className={`max-h-72 overflow-y-auto divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
@@ -153,7 +196,14 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
                   }`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-gray-800'}`}>{race.name}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`text-sm font-semibold truncate ${isDark ? 'text-white' : 'text-gray-800'}`}>{race.name}</div>
+                      {race.is_verified === false && (
+                        <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700">
+                          Pending review
+                        </span>
+                      )}
+                    </div>
                     <div className={`flex items-center gap-3 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3 h-3 flex-shrink-0" />

@@ -1,0 +1,21 @@
+{
+  "projectId": "63854849",
+  "functions": {
+    "hub-auth-proxy": {
+      "hasChanged": false,
+      "hash": "adfb874ba9a765b829990a2657eee67db01ee58b79f2b368f28bec4eddaca073"
+    },
+    "hub-data-proxy": {
+      "hasChanged": false,
+      "hash": "4773cbb469a673894d0207ca551a52822049a37ea49557b35113c5726783132c"
+    },
+    "usda-proxy": {
+      "hasChanged": false,
+      "hash": "383218625408fa9600e4537c54ddac44c0df1f639d48cc8d9b7cdb995e06e63a"
+    },
+    "race-info-lookup": {
+      "hasChanged": false,
+      "hash": "bac85bf375a4d9ed93755ff98bd74ca306e7957194a77f0c232359ad6615d0cb"
+    }
+  }
+}

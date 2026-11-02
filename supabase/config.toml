@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.usda-proxy]
 verify_jwt = false
+
+[functions.race-info-lookup]
+verify_jwt = false
