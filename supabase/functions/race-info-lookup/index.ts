@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { parseGpxTrack, type GpxTrackSummary } from "./gpx.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +9,8 @@ const corsHeaders = {
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 const MAX_QUERY_LENGTH = 120;
+const MAX_GPX_BYTES = 5 * 1024 * 1024;
+const GPX_TIMEOUT_MS = 15000;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -32,9 +35,42 @@ Use Google Search to find the official information for this event (the most rece
   "typical_day": day of the month (1-31),
   "race_date": next or most recent known date as YYYY-MM-DD, or null,
   "description": one short sentence in Spanish describing the event,
+  "gpx_url": a direct https link to a public GPX track file of this race course (the .gpx file itself, not a web page), or null,
   "found": true if you found reliable information, false otherwise
 }
 If you cannot find reliable information, return found false and use null for numeric fields.`;
+}
+
+function isSafeGpxUrl(raw: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  const isIpLiteral = /^[\d.]+$/.test(host) || host.includes(":");
+  if (url.protocol !== "https:" || isIpLiteral || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+    return null;
+  }
+  return url;
+}
+
+async function fetchGpxTrack(raw: string): Promise<GpxTrackSummary | null> {
+  const url = isSafeGpxUrl(raw);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(GPX_TIMEOUT_MS) });
+    if (!res.ok) return null;
+    if (res.url && !isSafeGpxUrl(res.url)) return null;
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_GPX_BYTES) return null;
+    const text = await res.text();
+    if (text.length > MAX_GPX_BYTES) return null;
+    return parseGpxTrack(text);
+  } catch {
+    return null;
+  }
 }
 
 function extractJson(text: string): Record<string, unknown> | null {
@@ -111,6 +147,7 @@ Deno.serve(async (req: Request) => {
       ? parsed.race_date
       : null;
     const description = typeof parsed.description === "string" ? parsed.description.trim() : "";
+    const gpxUrl = typeof parsed.gpx_url === "string" ? parsed.gpx_url.trim() : "";
 
     if (
       !name || !country || !city ||
@@ -133,8 +170,10 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Could not check the catalog" }, 500);
     }
     if (existing) {
-      return jsonResponse({ race: existing, created: false });
+      return jsonResponse({ race: existing, created: false, elevation_status: "existing" });
     }
+
+    const track = gpxUrl ? await fetchGpxTrack(gpxUrl) : null;
 
     const groundingChunks = candidate?.groundingMetadata?.groundingChunks ?? [];
     const sourceUrl: string | null = groundingChunks.find((c: { web?: { uri?: string } }) => c.web?.uri)?.web?.uri ?? null;
@@ -146,8 +185,8 @@ Deno.serve(async (req: Request) => {
         sport,
         country,
         city,
-        distance_km: distanceKm,
-        elevation_gain_m: elevationGainM,
+        distance_km: track?.distanceKm ?? distanceKm,
+        elevation_gain_m: track?.elevationGainM ?? elevationGainM,
         typical_month: typicalMonth,
         typical_day: typicalDay,
         race_date: raceDate,
@@ -162,7 +201,24 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Could not save the race" }, 500);
     }
 
-    return jsonResponse({ race: inserted, created: true });
+    let elevationStatus: "gpx" | "not_found" = "not_found";
+    if (track) {
+      const { error: profileError } = await supabase
+        .from("race_elevation_data")
+        .upsert(
+          {
+            race_catalog_id: inserted.id,
+            elevation_points: track.profile,
+            source: "gpx_auto",
+            updated_by: "ai_lookup",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "race_catalog_id" },
+        );
+      if (!profileError) elevationStatus = "gpx";
+    }
+
+    return jsonResponse({ race: inserted, created: true, elevation_status: elevationStatus });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal error";
     return jsonResponse({ error: message }, 500);

@@ -26,6 +26,7 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
     setQuery('');
     setOpen(false);
     setAiError(null);
+    setAiNotice(null);
   };
 
   const handleAiLookup = async () => {
@@ -88,6 +90,7 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
     if (term.length < 3 || aiLoading) return;
     setAiLoading(true);
     setAiError(null);
+    setAiNotice(null);
     try {
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/race-info-lookup`, {
         method: 'POST',
@@ -104,6 +107,12 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
         return;
       }
       const race = body.race as RaceCatalogEntry;
+      const elevationStatus = body.elevation_status as string | undefined;
+      if (elevationStatus === 'gpx') {
+        setAiNotice('Elevation profile and distance imported from the race GPX track. Pending admin review.');
+      } else if (elevationStatus === 'not_found') {
+        setAiNotice('No GPX track was found online for this race, so the elevation profile is not available yet. Added as a draft pending admin review.');
+      }
       setAllRaces((prev) => (prev.some((r) => r.id === race.id) ? prev : [...prev, race]));
       handleSelect(race);
     } catch {
@@ -163,6 +172,10 @@ export default function RaceCatalogSearch({ sport, onSelect }: Props) {
             {selected.description}
           </div>
         </div>
+      )}
+
+      {selected && aiNotice && (
+        <p className={`mt-2 text-xs leading-relaxed ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{aiNotice}</p>
       )}
 
       {open && !selected && (
