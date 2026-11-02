@@ -12,6 +12,7 @@ import type {
 } from '../../types/race';
 import { calculateRaceStrategy } from '../../engine/raceCalculationEngine';
 import { supabase } from '../../lib/supabase';
+import { aidStationToHydration, fetchAidStations, fetchElevationData } from '../../lib/raceEditorService';
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
 import SportSelector from './SportSelector';
@@ -178,10 +179,25 @@ export default function RacePlanner({
     }
     const sport = selectedSport!;
     const output = calculateRaceStrategy(sport, raceData, athleteData, strategy);
+    let courseData: Pick<RaceData, 'elevationPoints' | 'hydrationStations'> = {};
+    if (entry) {
+      try {
+        const [elevationPoints, aidRows] = await Promise.all([
+          fetchElevationData(entry.id),
+          fetchAidStations(entry.id),
+        ]);
+        courseData = {
+          elevationPoints,
+          hydrationStations: aidRows.map(aidStationToHydration),
+        };
+      } catch (err) {
+        console.error('Could not load course data for race', err);
+      }
+    }
     const comp: Competition = {
       sport,
       raceName: raceData.raceName,
-      raceData,
+      raceData: { ...raceData, ...courseData },
       athleteData,
       strategyPreferences: strategy,
       strategyOutput: output,
