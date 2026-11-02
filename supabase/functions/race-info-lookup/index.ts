@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash"];
 const MAX_QUERY_LENGTH = 120;
 const MAX_GPX_BYTES = 5 * 1024 * 1024;
 const GPX_TIMEOUT_MS = 15000;
@@ -112,20 +112,25 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(query, sport) }] }],
-          tools: [{ google_search: {} }],
-          generationConfig: { temperature: 0.2 },
-        }),
-      },
-    );
-    if (!geminiRes.ok) {
-      return jsonResponse({ error: `AI service error (${geminiRes.status})` }, 502);
+    const requestBody = JSON.stringify({
+      contents: [{ parts: [{ text: buildPrompt(query, sport) }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.2 },
+    });
+    let geminiRes: Response | null = null;
+    for (const model of GEMINI_MODELS) {
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+          body: requestBody,
+        },
+      );
+      if (geminiRes.status !== 404) break;
+    }
+    if (!geminiRes || !geminiRes.ok) {
+      return jsonResponse({ error: `AI service error (${geminiRes?.status ?? "no response"})` }, 502);
     }
 
     const geminiData = await geminiRes.json();
