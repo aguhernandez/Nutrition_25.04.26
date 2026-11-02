@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { Plus, Trash2, Upload, Download, Undo2 } from 'lucide-react';
 import type { ElevationPoint } from '../../types/race';
 import { usePreferences } from '../../../lib/preferences';
+import { parseGpxProfile } from '../../../utils/gpxProfile';
 
 interface Props {
   points: ElevationPoint[];
@@ -132,13 +133,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
       if (!file) return;
       pushHistory();
       const text = await file.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(text, 'text/xml');
-      const trkpts = Array.from(doc.getElementsByTagName('trkpt'));
-      const pts: ElevationPoint[] = trkpts.map((pt, i) => {
-        const ele = pt.getElementsByTagName('ele')[0]?.textContent ?? '0';
-        return { km: Math.round((i / Math.max(1, trkpts.length - 1)) * kmMax * 100) / 100, elevationM: Math.round(parseFloat(ele) || 0) };
-      }).filter((p) => !isNaN(p.elevationM));
+      const pts = parseGpxProfile(text);
       if (pts.length > 1) onChange(pts);
     };
     input.click();
