@@ -387,6 +387,7 @@ export default function RacePlanner({
       {step === 'questionnaire' && selectedSport && (
         <Questionnaire
           sport={selectedSport}
+          athleteId={effectiveAthleteId}
           onBack={() => setStep('sport')}
           onSubmit={handleQuestionnaire}
         />

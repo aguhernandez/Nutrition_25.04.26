@@ -1,3 +1,5 @@
+import type { EstimationInputsSnapshot } from '../engine/racePerformanceEstimator';
+
 export type Sport =
   | 'running'
   | 'trail_running'
@@ -31,7 +33,15 @@ export interface RaceData {
   elevationPoints?: ElevationPoint[];
   hydrationStations?: HydrationStation[];
   catalogRaceId?: string;
+  estimatedFinishTimeMin?: number | null;
+  selectedTargetTimeMin?: number;
+  estimationMethod?: EstimationMethod;
+  estimationModelVersion?: string;
+  estimationInputsSnapshot?: EstimationInputsSnapshot;
 }
+
+export type EstimationMethod = 'individualized' | 'limited' | 'manual';
+
 
 export interface AthleteData {
   bodyWeightKg: number;
