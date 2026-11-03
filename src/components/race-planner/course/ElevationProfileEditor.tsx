@@ -190,8 +190,8 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
       >
         <defs>
           <linearGradient id="editElevFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" stopOpacity={isDark ? '0.35' : '0.25'} />
-            <stop offset="100%" stopColor="#1e40af" stopOpacity={isDark ? '0.08' : '0.04'} />
+            <stop offset="0%" stopColor="#514163" stopOpacity={isDark ? '0.28' : '0.18'} />
+            <stop offset="100%" stopColor="#514163" stopOpacity={isDark ? '0.06' : '0.02'} />
           </linearGradient>
         </defs>
 
@@ -208,7 +208,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
         })}
 
         {areaPath && <path d={areaPath} fill="url(#editElevFill)" />}
-        {linePath && <polyline points={sorted.map((p) => `${toX(p.km).toFixed(1)},${toY(p.elevationM).toFixed(1)}`).join(' ')} fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinejoin="round" />}
+        {linePath && <polyline points={sorted.map((p) => `${toX(p.km).toFixed(1)},${toY(p.elevationM).toFixed(1)}`).join(' ')} fill="none" stroke="#514163" strokeWidth="2" strokeLinejoin="round" />}
 
         {sorted.map((p, i) => {
           const isSelected = selectedIndex === i;
@@ -220,7 +220,7 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
                 cx={toX(p.km)}
                 cy={toY(p.elevationM)}
                 r={dragIndex === i ? 8 : isHovered || isSelected ? 7 : 5}
-                fill={dragIndex === i ? '#f59e0b' : isSelected ? '#ef4444' : isHovered ? '#60a5fa' : '#3b82f6'}
+                fill={dragIndex === i ? '#fdda36' : isSelected ? '#514163' : isHovered ? '#6b5578' : '#80A688'}
                 fillOpacity={0.9}
                 stroke={isDark ? '#1f2937' : '#ffffff'}
                 strokeWidth="2"
@@ -232,12 +232,12 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
                 <g>
                   <rect x={toX(p.km) + 8} y={toY(p.elevationM) - 22} width="84" height="28" rx="6" fill={isDark ? '#111827' : '#ffffff'} fillOpacity="0.97" stroke={isDark ? '#374151' : '#e5e7eb'} strokeWidth="1" />
                   <text x={toX(p.km) + 50} y={toY(p.elevationM) - 11} textAnchor="middle" fontSize="11" fill={isDark ? '#e5e7eb' : '#1f2937'} fontWeight="600">{p.km.toFixed(1)} km</text>
-                  <text x={toX(p.km) + 50} y={toY(p.elevationM) + 2} textAnchor="middle" fontSize="11" fill="#60a5fa">{p.elevationM}m</text>
+                  <text x={toX(p.km) + 50} y={toY(p.elevationM) + 2} textAnchor="middle" fontSize="11" fill="#514163">{p.elevationM}m</text>
                 </g>
               )}
               {isSelected && sorted.length > 2 && (
                 <g style={{ cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); deletePoint(i); setSelectedIndex(null); }}>
-                  <circle cx={toX(p.km)} cy={toY(p.elevationM) - 20} r="9" fill="#ef4444" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="1.5" />
+                  <circle cx={toX(p.km)} cy={toY(p.elevationM) - 20} r="9" fill="#514163" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="1.5" />
                   <text x={toX(p.km)} y={toY(p.elevationM) - 16} textAnchor="middle" fontSize="12" fill="#ffffff" fontWeight="700">×</text>
                 </g>
               )}
@@ -249,9 +249,9 @@ export default function ElevationProfileEditor({ points, distanceKm, onChange }:
         <text x={14} y={PAD.top + PLOT_H / 2} textAnchor="middle" fontSize="11" fill={axisLabelFill} transform={`rotate(-90, 14, ${PAD.top + PLOT_H / 2})`}>Elevation (m)</text>
       </svg>
 
-      <div className="flex items-center gap-1 text-xs text-red-400">
+      <div className="flex items-center gap-1 text-xs text-[#514163]">
         <Trash2 className="w-3 h-3" />
-        Click a point to select it, then click the red × to delete. Drag any dot to reposition.
+        Click a point to select it, then click × to delete. Drag any dot to reposition.
       </div>
     </div>
   );

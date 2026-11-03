@@ -140,12 +140,15 @@ export default function SavedRaces({ onBack, onEdit }: Props) {
     if (assignment?.is_new) {
       clearIsNewFlag(race.id);
     }
+    // Older plans may only have the date in the top-level column. Hydrate the
+    // form value from that canonical value so an edit never clears it on save.
+    const raceDate = race.race_date?.slice(0, 10) || (race.race_data.raceDate as string | undefined)?.slice(0, 10) || '';
     const competition: Competition = {
       id: race.id,
       sport: race.sport,
       raceName: race.race_name,
-      raceDate: race.race_date ?? (race.race_data.raceDate as string | undefined),
-      raceData: race.race_data as Competition['raceData'],
+      raceDate,
+      raceData: { ...race.race_data, raceDate } as Competition['raceData'],
       athleteData: race.athlete_data as Competition['athleteData'],
       strategyPreferences: race.strategy_preferences as Competition['strategyPreferences'],
       strategyOutput: race.strategy_output as Competition['strategyOutput'],

@@ -35,7 +35,7 @@ function buildPath(points: ElevationPoint[], minElev: number, maxElev: number): 
 function getGradientSegments(points: ElevationPoint[]): { start: number; end: number; grade: number }[] {
   const segments: { start: number; end: number; grade: number }[] = [];
   const windowSize = Math.max(5, Math.floor(points.length / 20));
-  for (let i = 0; i < points.length - windowSize; i += windowSize) {
+  for (let i = 0; i <= points.length - windowSize; i += windowSize) {
     const a = points[i];
     const b = points[Math.min(i + windowSize, points.length - 1)];
     const distM = (b.km - a.km) * 1000;
@@ -43,6 +43,13 @@ function getGradientSegments(points: ElevationPoint[]): { start: number; end: nu
     segments.push({ start: a.km, end: b.km, grade });
   }
   return segments;
+}
+
+function terrainDifficulty(grade: number): { label: string; color: string } {
+  const absoluteGrade = Math.abs(grade);
+  if (absoluteGrade >= 8) return { label: 'Difficult', color: '#514163' };
+  if (absoluteGrade >= 4) return { label: 'Intermediate', color: '#FDDA36' };
+  return { label: 'Easy', color: '#80A688' };
 }
 
 export default function ElevationProfile({ elevationPoints, hydrationStations, distanceKm, totalElevationGainM }: Props) {
@@ -79,9 +86,6 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
   const yTicks = 5;
   const yTickStep = Math.ceil(elevRange / yTicks / 50) * 50;
 
-  const climbSegments = gradientSegments.filter((s) => s.grade >= 4);
-  const descentSegments = gradientSegments.filter((s) => s.grade <= -4);
-
   // Theme colors
   const gridStroke = isDark ? '#374151' : '#e5e7eb';
   const tickTextFill = isDark ? '#6b7280' : '#9ca3af';
@@ -96,15 +100,19 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
     <div className="relative w-full">
       <div className="flex items-center gap-6 mb-3 px-1 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-red-400 to-orange-400 opacity-80" />
-          <span className={`text-xs ${legendTextColor}`}>Climb (&gt;4%)</span>
+          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#80A688' }} />
+          <span className={`text-xs ${legendTextColor}`}>Easy (&lt;4%)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-gradient-to-r from-sky-400 to-blue-400 opacity-80" />
-          <span className={`text-xs ${legendTextColor}`}>Descent (&lt;-4%)</span>
+          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#fdda36' }} />
+          <span className={`text-xs ${legendTextColor}`}>Intermediate (4–7%)</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-full bg-cyan-400" />
+          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#514163' }} />
+          <span className={`text-xs ${legendTextColor}`}>Difficult (≥8%)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#fdda36' }} />
           <span className={`text-xs ${legendTextColor}`}>Water only</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -126,16 +134,8 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
       >
         <defs>
           <linearGradient id="elevFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" stopOpacity={isDark ? '0.35' : '0.25'} />
-            <stop offset="100%" stopColor="#1e40af" stopOpacity={isDark ? '0.08' : '0.04'} />
-          </linearGradient>
-          <linearGradient id="climbFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f87171" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#f87171" stopOpacity="0.1" />
-          </linearGradient>
-          <linearGradient id="descentFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.05" />
+            <stop offset="0%" stopColor="#514163" stopOpacity={isDark ? '0.28' : '0.18'} />
+            <stop offset="100%" stopColor="#514163" stopOpacity={isDark ? '0.06' : '0.02'} />
           </linearGradient>
         </defs>
 
@@ -169,31 +169,30 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
         {/* Main area fill */}
         <path d={fillPath} fill="url(#elevFill)" />
 
-        {/* Climb overlays */}
-        {climbSegments.map((seg, i) => {
-          const pts = elevationPoints.filter((p) => p.km >= seg.start && p.km <= seg.end);
-          if (pts.length < 2) return null;
-          const segPath = buildPath(pts, minElev, maxElev);
-          return <path key={`climb-${i}`} d={segPath} fill="url(#climbFill)" />;
-        })}
-
-        {/* Descent overlays */}
-        {descentSegments.map((seg, i) => {
-          const pts = elevationPoints.filter((p) => p.km >= seg.start && p.km <= seg.end);
-          if (pts.length < 2) return null;
-          const segPath = buildPath(pts, minElev, maxElev);
-          return <path key={`desc-${i}`} d={segPath} fill="url(#descentFill)" />;
-        })}
-
-        {/* Elevation line */}
+        {/* Neutral base line, then terrain difficulty by rolling grade. */}
         <polyline
           points={elevationPoints.map((p) => `${toX(p.km).toFixed(1)},${toY(p.elevationM).toFixed(1)}`).join(' ')}
           fill="none"
-          stroke="#60a5fa"
+          stroke={isDark ? '#9a8dad' : '#c6bbd0'}
           strokeWidth="2"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
+        {gradientSegments.map((seg, i) => {
+          const pts = elevationPoints.filter((p) => p.km >= seg.start && p.km <= seg.end);
+          if (pts.length < 2) return null;
+          return (
+            <polyline
+              key={`terrain-${i}`}
+              points={pts.map((p) => `${toX(p.km).toFixed(1)},${toY(p.elevationM).toFixed(1)}`).join(' ')}
+              fill="none"
+              stroke={terrainDifficulty(seg.grade).color}
+              strokeWidth="3"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          );
+        })}
 
         {/* Hydration station markers */}
         {hydrationStations.map((station) => {
@@ -202,7 +201,7 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
           , elevationPoints[0]);
           const x = toX(station.km);
           const y = nearestPoint ? toY(nearestPoint.elevationM) : PAD.top + PLOT_H;
-          const color = station.hasFood ? '#34d399' : '#22d3ee';
+          const color = station.hasFood ? '#34d399' : '#fdda36';
           return (
             <g key={station.id}>
               <line x1={x} y1={y - 2} x2={x} y2={PAD.top + PLOT_H} stroke={color} strokeWidth="1" strokeDasharray="3,3" strokeOpacity="0.5" />
@@ -218,10 +217,10 @@ export default function ElevationProfile({ elevationPoints, hydrationStations, d
         {tooltip && (
           <g>
             <line x1={tooltip.x} y1={PAD.top} x2={tooltip.x} y2={PAD.top + PLOT_H} stroke={isDark ? '#9ca3af' : '#9ca3af'} strokeWidth="1" strokeDasharray="4,3" />
-            <circle cx={tooltip.x} cy={tooltip.y} r="4" fill="#60a5fa" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="2" />
+            <circle cx={tooltip.x} cy={tooltip.y} r="4" fill="#514163" stroke={isDark ? '#1f2937' : '#ffffff'} strokeWidth="2" />
             <rect x={tooltip.x + 8} y={tooltip.y - 22} width="80" height="28" rx="6" fill={tooltipBg} fillOpacity="0.97" stroke={tooltipBorder} strokeWidth="1" />
             <text x={tooltip.x + 48} y={tooltip.y - 11} textAnchor="middle" fontSize="11" fill={tooltipTextFill} fontWeight="600">{tooltip.km.toFixed(1)} km</text>
-            <text x={tooltip.x + 48} y={tooltip.y + 2} textAnchor="middle" fontSize="11" fill="#60a5fa">{tooltip.elev}m</text>
+            <text x={tooltip.x + 48} y={tooltip.y + 2} textAnchor="middle" fontSize="11" fill="#514163">{tooltip.elev}m</text>
           </g>
         )}
 

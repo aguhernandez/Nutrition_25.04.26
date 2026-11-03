@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Send, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import type {
   Sport,
@@ -26,6 +26,8 @@ import CoachRaceAthleteSelector from './CoachRaceAthleteSelector';
 import type { RaceAthlete } from './CoachRaceAthleteSelector';
 import { pushRacePlan } from '../../lib/hubApi';
 import type { HubRacePlanPayload } from '../../lib/hubApi';
+import type { RaceNutritionPlan } from '../../types/nutrition';
+import { createRaceNutritionAssignment } from '../../lib/raceNutritionService';
 import {
   createRaceAssignment,
   markRaceAssignmentEdited,
@@ -156,10 +158,12 @@ export default function RacePlanner({
   const [pushResult, setPushResult] = useState<'success' | 'error' | null>(null);
   const [elevationPoints, setElevationPoints] = useState<ElevationPoint[] | undefined>(undefined);
   const [hydrationStations, setHydrationStations] = useState<HydrationStation[] | undefined>(undefined);
+  const persistedNutritionIds = useRef(new Set<string>());
 
   const effectiveAthleteId = selectedAthlete?.hub_user_id || selectedAthlete?.id || targetAthleteId || profile?.hub_user_id || user?.id || null;
   const effectiveAthleteEmail = selectedAthlete?.email || targetAthleteEmail || profile?.email || null;
   const effectiveAthleteName = selectedAthlete?.full_name || targetAthleteName || profile?.full_name || '';
+  const localAthleteId = selectedAthlete?.id || targetAthleteId || profile?.id || null;
   const isCoach = isCoachContext || (profile?.role === 'coach' || profile?.role === 'admin');
 
   const handleSportSelect = (sport: Sport) => {
@@ -178,7 +182,6 @@ export default function RacePlanner({
       setCompetition((prev) => prev ? { ...prev, raceData: { ...prev.raceData, catalogRaceId: entry.id } } : prev);
     }
     const sport = selectedSport!;
-    const output = calculateRaceStrategy(sport, raceData, athleteData, strategy);
     let courseData: Pick<RaceData, 'elevationPoints' | 'hydrationStations'> = {};
     if (entry) {
       try {
@@ -194,13 +197,21 @@ export default function RacePlanner({
         console.error('Could not load course data for race', err);
       }
     }
+    const courseMaxAltitude = courseData.elevationPoints?.length
+      ? Math.max(...courseData.elevationPoints.map((point) => point.elevationM))
+      : undefined;
+    const raceDataWithCourse: RaceData = {
+      ...raceData,
+      ...courseData,
+      maxAltitude: raceData.maxAltitude || courseMaxAltitude || raceData.altitude,
+    };
     const comp: Competition = {
       sport,
       raceName: raceData.raceName,
-      raceData: { ...raceData, ...courseData },
+      raceData: raceDataWithCourse,
       athleteData,
       strategyPreferences: strategy,
-      strategyOutput: output,
+      strategyOutput: calculateRaceStrategy(sport, raceDataWithCourse, athleteData, strategy),
       raceDate: raceData.raceDate,
     };
     setCompetition(comp);
@@ -210,9 +221,19 @@ export default function RacePlanner({
   const handleElevationChange = (pts: ElevationPoint[], stns: HydrationStation[]) => {
     setElevationPoints(pts);
     setHydrationStations(stns);
+    setCompetition((current) => {
+      if (!current) return current;
+      const maxAltitude = pts.length ? Math.max(...pts.map((point) => point.elevationM)) : current.raceData.maxAltitude;
+      const raceData = { ...current.raceData, elevationPoints: pts, hydrationStations: stns, maxAltitude };
+      return {
+        ...current,
+        raceData,
+        strategyOutput: calculateRaceStrategy(current.sport, raceData, current.athleteData, current.strategyPreferences),
+      };
+    });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (nutritionPlan?: RaceNutritionPlan) => {
     if (!competition) return;
     const athleteId = effectiveAthleteId;
     const raceDataToSave = {
@@ -221,6 +242,7 @@ export default function RacePlanner({
       hydrationStations: hydrationStations ?? competition.raceData.hydrationStations,
     };
 
+    let nutritionCompetitionId = savedId;
     if (savedId) {
       const { error } = await supabase
         .from('competitions')
@@ -261,6 +283,7 @@ export default function RacePlanner({
         .maybeSingle();
       if (error) console.error('Save race error:', error);
       if (data?.id) {
+        nutritionCompetitionId = data.id;
         setSavedId(data.id);
         setCompetition((current) => current ? { ...current, id: data.id } : current);
         if (raceTags.length > 0) {
@@ -281,6 +304,23 @@ export default function RacePlanner({
           });
         }
       }
+    }
+
+    if (nutritionCompetitionId && nutritionPlan?.timeline) {
+      const localItems = nutritionPlan.timeline.filter((item) => (item.id.startsWith('local-') || item.id.startsWith('auto-')) && !persistedNutritionIds.current.has(item.id));
+      const persisted = await Promise.all(localItems.map((item) => createRaceNutritionAssignment({
+        competitionId: nutritionCompetitionId!,
+        productId: item.product_id,
+        recipeId: item.recipe_id,
+        foodId: item.food_id,
+        timingMode: item.timing_mode,
+        timingMinutes: item.timing_minutes,
+        distanceMarker: item.distance_marker,
+        aidStationName: item.aid_station_name,
+        quantity: item.quantity,
+        note: item.note,
+      })));
+      localItems.forEach((item, index) => { if (persisted[index]) persistedNutritionIds.current.add(item.id); });
     }
   };
 
@@ -367,6 +407,7 @@ export default function RacePlanner({
             savedElevationPoints={elevationPoints ?? competition.raceData.elevationPoints}
             savedHydrationStations={hydrationStations ?? competition.raceData.hydrationStations}
             onElevationChange={handleElevationChange}
+            athleteId={localAthleteId}
             coachSendBanner={isCoach && savedId && selectedAthlete ? (
               <div
                 className="mt-4 mb-2 rounded-2xl p-5 flex items-center justify-between"

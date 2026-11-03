@@ -25,6 +25,8 @@ export interface RaceData {
   temperature: number;
   humidity: number;
   altitude: number;
+  /** Highest point on the course. Kept separate from the start altitude. */
+  maxAltitude?: number;
   raceDate: string;
   elevationPoints?: ElevationPoint[];
   hydrationStations?: HydrationStation[];
@@ -73,6 +75,7 @@ export interface CarbStrategy {
 export interface HydrationStrategy {
   sweatRateLH: number;
   fluidIntakeLH: number;
+  sodiumMgL: number;
   totalFluidL: number;
   sodiumMgH: number;
   totalSodiumMg: number;

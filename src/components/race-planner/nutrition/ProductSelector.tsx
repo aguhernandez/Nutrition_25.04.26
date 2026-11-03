@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, X, CheckCircle, Zap, Droplets, Flame } from 'lucide-react';
 import type { NutritionProduct, NutritionCategory } from '../../../types/nutrition';
 import { usePreferences } from '../../../lib/preferences';
+import { getPreferredSupplementIds } from '../../../lib/preferredSupplements';
 
 interface Props {
   products: NutritionProduct[];
@@ -9,6 +10,7 @@ interface Props {
   selectedId?: string;
   placeholder?: string;
   onSelect: (product: NutritionProduct | null) => void;
+  athleteId?: string | null;
 }
 
 const categoryLabels: Record<NutritionCategory, string> = {
@@ -39,13 +41,14 @@ const priceColors: Record<string, string> = {
   '$$$': 'text-orange-400',
 };
 
-export default function ProductSelector({ products, categories, selectedId, placeholder = 'Search products...', onSelect }: Props) {
+export default function ProductSelector({ products, categories, selectedId, placeholder = 'Search products...', onSelect, athleteId }: Props) {
   const { theme } = usePreferences();
   const isDark = theme === 'dark';
 
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<NutritionProduct | null>(null);
+  const [preferredIds, setPreferredIds] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,6 +59,12 @@ export default function ProductSelector({ products, categories, selectedId, plac
       setSelected(null);
     }
   }, [selectedId, products]);
+
+  useEffect(() => {
+    let active = true;
+    getPreferredSupplementIds(athleteId).then(({ data }) => { if (active) setPreferredIds(data); });
+    return () => { active = false; };
+  }, [athleteId]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -71,7 +80,8 @@ export default function ProductSelector({ products, categories, selectedId, plac
       if (!query.trim()) return true;
       const q = query.toLowerCase();
       return p.full_name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.notes.toLowerCase().includes(q);
-    });
+    })
+    .sort((a, b) => Number(preferredIds.includes(b.id)) - Number(preferredIds.includes(a.id)));
 
   const handleSelect = (p: NutritionProduct) => {
     setSelected(p);
@@ -183,6 +193,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
                         style={{ color: isDark ? '#f3f4f6' : '#1f2937' }}
                       >
                         {p.full_name}
+                        {preferredIds.includes(p.id) && <span className="ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color: '#514163', backgroundColor: '#fdda36' }}>★ Preferred</span>}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-xs" style={{ color: textMuted }}>
