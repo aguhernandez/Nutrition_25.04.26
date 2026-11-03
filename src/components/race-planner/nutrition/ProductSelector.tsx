@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, X, CheckCircle, Zap, Droplets, Flame } from 'lucide-react';
 import type { NutritionProduct, NutritionCategory } from '../../../types/nutrition';
 import { usePreferences } from '../../../lib/preferences';
-import { getPreferredSupplementReferences, type PreferredSupplementReference } from '../../../lib/preferredSupplements';
+import { getPreferredSupplementReferences, isPreferredProduct, type PreferredSupplementReference } from '../../../lib/preferredSupplements';
 
 interface Props {
   products: NutritionProduct[];
@@ -74,14 +74,10 @@ export default function ProductSelector({ products, categories, selectedId, plac
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const isPreferred = (product: NutritionProduct) => {
-    const productText = `${product.brand} ${product.full_name} ${product.product_name}`.toLowerCase();
-    return preferredReferences.some((reference) => reference.foodId === product.id || (
-      reference.nameEn && productText.includes(reference.nameEn.toLowerCase())
-    ) || (
-      reference.nameEs && productText.includes(reference.nameEs.toLowerCase())
-    ));
-  };
+  const preferredProductIds = new Set(
+    products.filter((p) => isPreferredProduct(p, preferredReferences)).map((p) => p.id),
+  );
+  const isPreferred = (product: NutritionProduct) => preferredProductIds.has(product.id);
 
   const filtered = products
     .filter((p) => {

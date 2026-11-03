@@ -33,6 +33,28 @@ export async function setPreferredSupplement(athleteId: string, foodId: string, 
     .eq('food_id', foodId);
 }
 
+const normalizeText = (value: string | null | undefined) =>
+  (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+export function isPreferredProduct(
+  product: { brand: string; product_name: string; full_name: string },
+  references: PreferredSupplementReference[],
+) {
+  const productBrand = normalizeText(product.brand);
+  const productNames = [product.product_name, product.full_name].map(normalizeText).filter(Boolean);
+  return references.some((reference) => {
+    if (normalizeText(reference.brand) !== productBrand) return false;
+    return [reference.nameEs, reference.nameEn]
+      .map(normalizeText)
+      .some((name) => name !== '' && productNames.includes(name));
+  });
+}
+
 export async function getPreferredSupplementReferences(athleteId: string | null | undefined) {
   if (!isLocalProfileId(athleteId)) return { data: [] as PreferredSupplementReference[], error: null };
   const { data, error } = await supabase
