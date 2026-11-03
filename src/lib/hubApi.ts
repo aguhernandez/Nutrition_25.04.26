@@ -398,6 +398,59 @@ export function getNutritionAnamnesis(athleteEmailOrId: string): Promise<HubNutr
   );
 }
 
+export function saveNutritionAnamnesis(athleteEmailOrId: string, anamnesis: Partial<HubNutritionAnamnesis>): Promise<HubNutritionAnamnesis> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/save-anamnesis?${athleteParam(athleteEmailOrId)}`, {
+      method: 'POST',
+      headers: getProxyHeaders(),
+      body: JSON.stringify(anamnesis),
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      return (raw.anamnesis ?? raw) as HubNutritionAnamnesis;
+    })
+  );
+}
+
+export interface HubEditableFoodDiaryEntry {
+  id?: string;
+  entry_time: string;
+  meal_type: string;
+  food_description: string;
+  estimated_calories: number;
+  estimated_carbs_g: number;
+  estimated_protein_g: number;
+  estimated_fat_g: number;
+  additional_notes?: string;
+  needs_review?: boolean;
+}
+
+export interface HubEditableFoodDiarySession {
+  id?: string;
+  period_hours: number;
+  start_date: string;
+  day_of_week: string;
+  status: string;
+  total_calories?: number;
+  total_carbs_g?: number;
+  total_protein_g?: number;
+  total_fat_g?: number;
+  completed_at?: string | null;
+  entries: HubEditableFoodDiaryEntry[];
+}
+
+export function saveFoodDiary(athleteEmailOrId: string, session: HubEditableFoodDiarySession): Promise<HubEditableFoodDiarySession> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/save-food-diary?${athleteParam(athleteEmailOrId)}`, {
+      method: 'POST',
+      headers: getProxyHeaders(),
+      body: JSON.stringify(session),
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      return (raw.session ?? raw) as HubEditableFoodDiarySession;
+    })
+  );
+}
+
 export function getAnthropometry(athleteEmailOrId: string, limit = 5): Promise<HubAnthropometry> {
   return rateLimiter.execute(() =>
     fetch(`${PROXY_BASE}/anthropometry?${athleteParam(athleteEmailOrId)}&limit=${limit}`, {
@@ -580,6 +633,17 @@ export function getFoodDiary(
     ).then(async (r) => {
       const raw = await handleResponse<Record<string, unknown>>(r);
       return normalizeFoodDiaryResponse(raw);
+    })
+  );
+}
+
+export function getFoodDiarySessions(athleteEmailOrId: string): Promise<HubEditableFoodDiarySession[]> {
+  return rateLimiter.execute(() =>
+    fetch(`${PROXY_BASE}/food-diary?${athleteParam(athleteEmailOrId)}&limit=20`, {
+      method: 'GET', headers: getProxyHeaders(),
+    }).then(async (r) => {
+      const raw = await handleResponse<Record<string, unknown>>(r);
+      return (raw.food_diary_sessions ?? []) as HubEditableFoodDiarySession[];
     })
   );
 }
