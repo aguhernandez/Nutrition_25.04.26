@@ -291,28 +291,60 @@ async function findLocalAthlete(satellite: ReturnType<typeof getServiceClient>, 
   return data as { id: string; hub_user_id: string | null; membership_slug: string | null };
 }
 
-async function findExistingByRequestKey(satellite: ReturnType<typeof getServiceClient>, requestKey: string) {
-  const { data, error } = await satellite
-    .from("smart_plan_usage_events")
-    .select("plan_id, athlete_id")
-    .eq("request_key", requestKey)
-    .maybeSingle();
-  if (error) throw new HttpError(500, "DATABASE_ERROR", "Idempotency lookup failed");
-  return data as { plan_id: string | null; athlete_id: string } | null;
-}
+async function createPlanWithQuota(
+  satellite: ReturnType<typeof getServiceClient>,
+  input: SmartRequest,
+  athlete: { id: string },
+  requester: Requester,
+  coachId: string | null,
+  title: string,
+  targets: ReturnType<typeof calculateTargets>,
+  snapshot: ReturnType<typeof buildSnapshot>,
+) {
+  const { data, error } = await satellite.rpc("create_smart_plan_with_quota", {
+    p_athlete_id: athlete.id,
+    p_request_key: input.request_key,
+    p_requester_hub_id: requester.id,
+    p_kind: input.mode,
+    p_title: title,
+    p_description: `Generado con ${CALCULATOR_VERSION}`,
+    p_calories_goal: targets.calories_goal,
+    p_protein_goal: targets.protein_goal,
+    p_carbs_goal: targets.carbs_goal,
+    p_fats_goal: targets.fats_goal,
+    p_plan_kind: input.plan_kind,
+    p_smart_status: input.plan_kind === "personal" ? "suggested" : "under_review",
+    p_calculator_version: CALCULATOR_VERSION,
+    p_source_snapshot: snapshot,
+    p_generation_parameters: { mode: input.mode, targets, request_key: input.request_key },
+    p_professional_justification: input.professional_justification ?? null,
+    p_parent_plan_id: input.parent_plan_id ?? null,
+    p_coach_id: coachId,
+  });
 
-async function countMonthlyUsage(satellite: ReturnType<typeof getServiceClient>, athleteId: string, kind: GenerationMode) {
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  const { count, error } = await satellite
-    .from("smart_plan_usage_events")
-    .select("id", { count: "exact", head: true })
-    .eq("athlete_id", athleteId)
-    .eq("kind", kind)
-    .gte("created_at", monthStart.toISOString());
-  if (error) throw new HttpError(500, "DATABASE_ERROR", "Quota lookup failed");
-  return count ?? 0;
+  if (error) {
+    if (error.message.includes("SMART_PLAN_QUOTA_EXCEEDED")) {
+      throw new HttpError(429, "QUOTA_EXCEEDED", "Monthly limit reached for this kind of generation", {
+        mode: input.mode,
+        limit: QUOTA_LIMITS[input.mode],
+      });
+    }
+    if (error.message.includes("SMART_PLAN_REQUEST_KEY_CONFLICT")) {
+      throw new HttpError(409, "REQUEST_KEY_CONFLICT", "request_key was already used for another athlete");
+    }
+    throw new HttpError(500, "DATABASE_ERROR", "Plan could not be saved");
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const status = typeof row?.status === "string" ? row.status : "";
+  const planId = typeof row?.plan_id === "string" ? row.plan_id : "";
+  if (!planId || (status !== "created" && status !== "existing")) {
+    throw new HttpError(500, "DATABASE_ERROR", "Plan creation did not return a valid result");
+  }
+
+  const plan = await loadPlanById(satellite, planId);
+  if (!plan) throw new HttpError(500, "DATABASE_ERROR", "Plan could not be loaded after creation");
+  return { status, plan };
 }
 
 async function loadPlanById(satellite: ReturnType<typeof getServiceClient>, planId: string) {
@@ -370,23 +402,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const existing = await findExistingByRequestKey(satellite, input.request_key);
-    if (existing) {
-      if (existing.athlete_id !== athlete.id) {
-        throw new HttpError(409, "REQUEST_KEY_CONFLICT", "request_key was already used for another athlete");
-      }
-      const plan = existing.plan_id ? await loadPlanById(satellite, existing.plan_id) : null;
-      return jsonResponse({ status: "existing", plan }, 200);
-    }
-
-    const used = await countMonthlyUsage(satellite, athlete.id, input.mode);
-    if (used >= QUOTA_LIMITS[input.mode]) {
-      throw new HttpError(429, "QUOTA_EXCEEDED", "Monthly limit reached for this kind of generation", {
-        mode: input.mode,
-        limit: QUOTA_LIMITS[input.mode],
-      });
-    }
-
     const [profileData, anamnesisData, workoutsData, diaryData] = await Promise.all([
       fetchBridge("athlete-profile", hubAthleteId, plannerToken),
       fetchBridge("anamnesis", hubAthleteId, plannerToken),
@@ -410,48 +425,21 @@ Deno.serve(async (req: Request) => {
       ? { data: null }
       : await satellite.from("profiles").select("id").eq("hub_user_id", requester.id).maybeSingle();
 
-    const { data: plan, error: insertError } = await satellite
-      .from("meal_plans_v2")
-      .insert({
-        athlete_id: athlete.id,
-        coach_id: requesterProfile?.id ?? null,
-        title,
-        description: `Generado con ${CALCULATOR_VERSION}`,
-        calories_goal: targets.calories_goal,
-        protein_goal: targets.protein_goal,
-        carbs_goal: targets.carbs_goal,
-        fats_goal: targets.fats_goal,
-        status: "draft",
-        plan_kind: input.plan_kind,
-        smart_status: isPersonal ? "suggested" : "under_review",
-        calculator_version: CALCULATOR_VERSION,
-        source_snapshot: snapshot,
-        generation_parameters: { mode: input.mode, targets, request_key: input.request_key },
-        professional_justification: input.professional_justification ?? null,
-        parent_plan_id: input.parent_plan_id ?? null,
-      })
-      .select("*")
-      .single();
-    if (insertError || !plan) throw new HttpError(500, "DATABASE_ERROR", "Plan could not be saved");
+    const result = await createPlanWithQuota(
+      satellite,
+      input,
+      athlete,
+      requester,
+      requesterProfile?.id ?? null,
+      title,
+      targets,
+      snapshot,
+    );
 
-    const { error: usageError } = await satellite.from("smart_plan_usage_events").insert({
-      request_key: input.request_key,
-      athlete_id: athlete.id,
-      requester_hub_id: requester.id,
-      kind: input.mode,
-      plan_id: plan.id,
-    });
-    if (usageError) {
-      await satellite.from("meal_plans_v2").delete().eq("id", plan.id);
-      if (usageError.code === "23505") {
-        const raced = await findExistingByRequestKey(satellite, input.request_key);
-        const racedPlan = raced?.plan_id ? await loadPlanById(satellite, raced.plan_id) : null;
-        return jsonResponse({ status: "existing", plan: racedPlan }, 200);
-      }
-      throw new HttpError(500, "DATABASE_ERROR", "Usage could not be recorded");
-    }
-
-    return jsonResponse({ status: "created", plan, targets, snapshot }, 201);
+    return jsonResponse(
+      { status: result.status, plan: result.plan, targets, snapshot },
+      result.status === "created" ? 201 : 200,
+    );
   } catch (error) {
     if (error instanceof HttpError) return errorResponse(error);
     console.error("[smart-nutrition-plan]", error);
