@@ -176,20 +176,34 @@ function extractWorkouts(data: unknown): Array<Record<string, unknown>> {
 }
 
 function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsData: unknown, diaryData: unknown) {
-  const profile = asRecord(asRecord(profileData).profile ?? profileData);
-  const bodyComposition = asRecord(profile.body_composition);
+  // The Hub bridge returns profile and body_composition as siblings. Keep the
+  // adapter explicit so a valid Bioimpedance result is not treated as missing.
+  const profilePayload = asRecord(profileData);
+  const profile = asRecord(profilePayload.profile ?? profileData);
+  const bodyComposition = asRecord(profilePayload.body_composition ?? profile.body_composition);
   const anamnesis = asRecord(asRecord(anamnesisData).anamnesis ?? anamnesisData);
   const sources = [bodyComposition, profile, anamnesis];
 
-  const now = Date.now();
+  // Hub exposes completed 24-hour recalls as food_diary_sessions[].entries.
+  // Older bridge versions can still return a flat entry list, so preserve that
+  // fallback without assuming an arbitrary `date` field on every entry.
   const diaryRecord = asRecord(diaryData);
-  const diaryList = Array.isArray(diaryData)
+  const diarySessions = Array.isArray(diaryData)
+    ? diaryData
+    : diaryRecord.food_diary_sessions ?? diaryRecord.sessions ?? [];
+  const completed24hEntries = (Array.isArray(diarySessions) ? diarySessions : []).reduce((count, session) => {
+    const row = asRecord(session);
+    const periodHours = asNumber(row.period_hours) ?? 0;
+    const status = String(row.status ?? "").toLowerCase();
+    const entries = Array.isArray(row.entries) ? row.entries : [];
+    return status === "completed" && periodHours >= 24 ? count + entries.length : count;
+  }, 0);
+  const flatDiaryEntries = Array.isArray(diaryData)
     ? diaryData
     : diaryRecord.entries ?? diaryRecord.food_entries ?? diaryRecord.items ?? [];
-  const diaryEntries24h = (Array.isArray(diaryList) ? diaryList : []).filter((entry) => {
-    const date = typeof asRecord(entry).date === "string" ? new Date(String(asRecord(entry).date)).getTime() : NaN;
-    return Number.isFinite(date) && now - date <= 24 * 3600 * 1000 && date <= now + 3600 * 1000;
-  }).length;
+  const diaryEntries24h = completed24hEntries > 0
+    ? completed24hEntries
+    : (Array.isArray(flatDiaryEntries) ? flatDiaryEntries.length : 0);
 
   const weightKg = pickNumber(sources, ["weight_kg", "body_weight_kg", "weight"]);
   const heightCm = pickNumber(sources, ["height_cm", "body_height_cm", "height"]);
