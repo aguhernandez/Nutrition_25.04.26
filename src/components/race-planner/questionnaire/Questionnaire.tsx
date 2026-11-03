@@ -11,6 +11,7 @@ import type {
 import Step1RaceData from './Step1RaceData';
 import Step2AthleteData from './Step2AthleteData';
 import Step3Strategy from './Step3Strategy';
+import { isRunningSport } from '../../../config/sports';
 
 interface Props {
   sport: Sport;
@@ -44,10 +45,13 @@ export default function Questionnaire({ sport, onBack, onSubmit }: Props) {
   const [catalogEntry, setCatalogEntry] = useState<RaceCatalogEntry | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
+  const durationOptional = isRunningSport(sport);
+  const hasDuration = raceData.expectedDurationMin > 0;
+
   const validateStep = (): boolean => {
-    if (step === 1) return raceData.raceName.trim().length > 0 && raceData.distance > 0 && raceData.expectedDurationMin > 0;
+    if (step === 1) return raceData.raceName.trim().length > 0 && raceData.distance > 0 && (durationOptional || hasDuration);
     if (step === 2) return athleteData.bodyWeightKg > 0;
-    return true;
+    return durationOptional ? hasDuration : true;
   };
 
   const handleNext = async () => {
@@ -118,6 +122,42 @@ export default function Questionnaire({ sport, onBack, onSubmit }: Props) {
       >
         {step === 1 && <Step1RaceData sport={sport} data={raceData} onChange={setRaceData} onCatalogSelect={(e) => setCatalogEntry(e ?? undefined)} />}
         {step === 2 && <Step2AthleteData sport={sport} data={athleteData} onChange={setAthleteData} />}
+        {step === 3 && durationOptional && (
+          <div className="mb-8 rounded-2xl p-5 border-2" style={{ backgroundColor: 'rgba(253,218,54,0.1)', borderColor: '#fdda36' }}>
+            <label className="block font-body font-semibold text-sm text-[#514163] mb-1">Target finish time</label>
+            <p className="font-body text-xs text-[#9ca3af] mb-3">
+              {hasDuration ? 'Set from your race details. Edit to change it.' : 'Required before generating the plan. Your realistic goal time.'}
+            </p>
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                min="0"
+                max="99"
+                placeholder="3"
+                value={hasDuration ? Math.floor(raceData.expectedDurationMin / 60) : ''}
+                className="input-brand"
+                onChange={(e) => {
+                  const minutes = raceData.expectedDurationMin % 60;
+                  setRaceData({ ...raceData, expectedDurationMin: (parseInt(e.target.value) || 0) * 60 + minutes });
+                }}
+              />
+              <span className="font-body text-sm text-[#9ca3af] whitespace-nowrap">h</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                placeholder="30"
+                value={hasDuration ? raceData.expectedDurationMin % 60 : ''}
+                className="input-brand"
+                onChange={(e) => {
+                  const hours = Math.floor(raceData.expectedDurationMin / 60);
+                  setRaceData({ ...raceData, expectedDurationMin: hours * 60 + Math.min(59, parseInt(e.target.value) || 0) });
+                }}
+              />
+              <span className="font-body text-sm text-[#9ca3af] whitespace-nowrap">min</span>
+            </div>
+          </div>
+        )}
         {step === 3 && <Step3Strategy data={strategy} onChange={setStrategy} />}
       </div>
 

@@ -125,7 +125,10 @@ export default function Step1RaceData({ sport, data, onChange, onCatalogSelect }
             </div>
           </Field>
 
-          <Field label="Expected Duration" hint="Your realistic goal time">
+          <Field
+            label={isRunning ? 'Expected Duration (optional)' : 'Expected Duration'}
+            hint={isRunning ? 'Leave empty to set your target in the next step' : 'Your realistic goal time'}
+          >
             <div className="flex gap-2 items-center">
               <input
                 type="number"
