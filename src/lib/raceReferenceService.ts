@@ -27,7 +27,10 @@ export async function fetchRaceReferences(athleteId: string, sport: Sport, openR
     .order('race_date', { ascending: false });
   if (error) throw error;
 
-  const candidates = ((competitions ?? []) as CompetitionRow[]).filter((c) => c.race_name !== openRace.raceName);
+  // The current race cannot be returned because the query is strictly before its
+  // date. Keep prior editions with the same name: they are valid historical
+  // references and excluding them leaves athletes without usable evidence.
+  const candidates = (competitions ?? []) as CompetitionRow[];
   if (candidates.length === 0) return [];
 
   const { data: feedback, error: feedbackError } = await supabase
