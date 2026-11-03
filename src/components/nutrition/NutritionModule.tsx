@@ -14,6 +14,7 @@ import CoachNotes from './CoachNotes';
 import MicronutrientSearch from './MicronutrientSearch';
 import MenuTemplatesView from './MenuTemplatesView';
 import CoachAthleteSelector from './CoachAthleteSelector';
+import HubAssessmentsView from './HubAssessmentsView';
 import { useAuth } from '../../lib/auth';
 
 export type NutritionTab =
@@ -32,7 +33,8 @@ export type NutritionTab =
   | 'supplements'
   | 'race-protocol'
   | 'coach-notes'
-  | 'micronutrients';
+  | 'micronutrients'
+  | 'assessments';
 
 
 interface Props {
@@ -76,6 +78,7 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
       case 'diary': return <DailyDiary onBack={() => handleSetTab('dashboard')} />;
       case 'shopping': return <ShoppingList onBack={() => handleSetTab('dashboard')} />;
       case 'anamnesis': return <NutritionAnamnesisV2 onBack={() => handleSetTab('dashboard')} />;
+      case 'assessments': return <HubAssessmentsView onBack={() => handleSetTab('dashboard')} />;
       case 'one-on-one': return <NutritionOneOnOne onBack={() => handleSetTab('dashboard')} />;
       case 'admin-foods': return <AdminFoodsView onBack={() => handleSetTab('dashboard')} />;
       case 'supplements': return <SupplementsView onBack={() => handleSetTab('dashboard')} />;
