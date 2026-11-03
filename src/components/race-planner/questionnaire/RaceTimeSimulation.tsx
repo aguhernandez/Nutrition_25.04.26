@@ -76,7 +76,9 @@ export default function RaceTimeSimulation({ sport, raceData, athleteId, catalog
       sport,
       distanceKm: raceData.distanceUnit === 'miles' ? raceData.distance * KM_PER_MILE : raceData.distance,
       elevationGainM: raceData.elevationGain,
-      elevationPoints: catalogPoints,
+      // A manually saved course profile is the source of truth. The catalog
+      // profile is only a fallback when there is no manual profile.
+      elevationPoints: raceData.elevationPoints?.length ? raceData.elevationPoints : catalogPoints,
       maxAltitudeM: raceData.maxAltitude || raceData.altitude,
     };
     const missingDate = !raceData.raceDate ? ['Enter the race date to use your past races as references.'] : [];
