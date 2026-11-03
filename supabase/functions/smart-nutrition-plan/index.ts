@@ -205,13 +205,15 @@ function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsDat
   const today = new Date();
   const weekEnd = new Date(today.getTime() + 7 * 24 * 3600 * 1000);
   const upcoming = extractWorkouts(workoutsData).filter((workout) => {
-    const date = typeof workout.date === "string" ? new Date(workout.date) : null;
+    const rawDate = workout.scheduled_date ?? workout.date;
+    const date = typeof rawDate === "string" ? new Date(rawDate) : null;
     return !date || (date >= today && date <= weekEnd);
   });
-  const weeklyMinutes = upcoming.reduce(
-    (sum, workout) => sum + (asNumber(workout.duration_minutes) ?? asNumber(workout.duration_min) ?? 0),
-    0,
-  );
+  const durationOf = (workout: Record<string, unknown>) => {
+    const nested = asRecord(workout.workouts);
+    return asNumber(workout.duration_minutes) ?? asNumber(nested.duration_minutes) ?? asNumber(workout.duration_min) ?? 0;
+  };
+  const weeklyMinutes = upcoming.reduce((sum, workout) => sum + durationOf(workout), 0);
   const weeklyImpulse = upcoming.reduce((sum, workout) => sum + (asNumber(workout.estimated_impulse) ?? 0), 0);
 
   return {
