@@ -1,5 +1,6 @@
 const PROXY_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/hub-data-proxy`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const HUB_SESSION_TOKEN_KEY = 'hub_session_token';
 
 export class HubApiError extends Error {
   constructor(
@@ -13,13 +14,15 @@ export class HubApiError extends Error {
 }
 
 function getProxyHeaders(): HeadersInit {
+  const hubSessionToken = localStorage.getItem(HUB_SESSION_TOKEN_KEY);
+  if (!hubSessionToken) {
+    throw new HubApiError('AUTH_REQUIRED', 'Your Hub session has expired. Please sign in again.');
+  }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${ANON_KEY}`,
+    'Authorization': `Bearer ${hubSessionToken}`,
     'apikey': ANON_KEY,
   };
-  const localToken = localStorage.getItem('hub_planner_token');
-  if (localToken && !localToken.includes('xxxxx')) headers['X-Hub-Planner-Token'] = localToken;
   return headers;
 }
 

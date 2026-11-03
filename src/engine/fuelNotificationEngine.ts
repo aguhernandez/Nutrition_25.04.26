@@ -147,6 +147,85 @@ function buildAidStationAlerts(
   });
 }
 
+function assignmentName(item: NonNullable<RaceNutritionPlan['timeline']>[number]): string {
+  return item.product?.full_name
+    ?? item.recipe?.name_es
+    ?? item.recipe?.name_en
+    ?? item.recipe?.name
+    ?? item.food?.name_es
+    ?? item.food?.name_en
+    ?? 'Suplemento';
+}
+
+function assignmentNutrients(item: NonNullable<RaceNutritionPlan['timeline']>[number]) {
+  const quantity = item.quantity;
+  const product = item.product;
+  const recipe = item.recipe;
+  const food = item.food;
+  return {
+    carbsG: (product?.carbs_g ?? recipe?.carbs_g ?? ((food?.carbs_per_100g ?? 0) / 100)) * quantity,
+    sodiumMg: (product?.sodium_mg ?? recipe?.sodium_mg ?? ((food?.sodium_mg ?? 0) / 100)) * quantity,
+    caffeineMg: (product?.caffeine_mg ?? 0) * quantity,
+    fluidMl: (product?.serving_size_ml ?? 0) * quantity,
+  };
+}
+
+function assignmentTimeMinutes(
+  item: NonNullable<RaceNutritionPlan['timeline']>[number],
+  competition: Competition,
+  paceMinKm: number,
+  hydrationStations?: HydrationStation[],
+): number | null {
+  if (item.timing_mode === 'time') return item.timing_minutes;
+  if (item.timing_mode === 'distance' && item.distance_marker !== null) {
+    const distanceKm = competition.raceData.distanceUnit === 'miles'
+      ? item.distance_marker * 1.60934
+      : item.distance_marker;
+    return distanceKm * paceMinKm;
+  }
+  if (item.timing_mode === 'aid_station' && item.aid_station_name) {
+    const station = hydrationStations?.find((candidate) => candidate.label === item.aid_station_name);
+    return station ? station.km * paceMinKm : null;
+  }
+  return null;
+}
+
+function buildSavedPlanReminders(
+  competition: Competition,
+  timeline: NonNullable<RaceNutritionPlan['timeline']>,
+  paceMinKm: number,
+  hydrationStations?: HydrationStation[],
+): FuelNotification[] {
+  const durationMin = competition.raceData.expectedDurationMin;
+  return timeline.flatMap((item, index) => {
+    const timingMin = assignmentTimeMinutes(item, competition, paceMinKm, hydrationStations);
+    if (timingMin === null || timingMin < 0 || timingMin >= durationMin) return [];
+    const nutrients = assignmentNutrients(item);
+    const type: NotificationType = nutrients.fluidMl > 0 && nutrients.carbsG === 0
+      ? 'FLUID_REMINDER'
+      : nutrients.caffeineMg > 0 && nutrients.carbsG === 0
+        ? 'CAFFEINE_REMINDER'
+        : 'CARB_REMINDER';
+    const kmMark = timingMin / paceMinKm;
+    const details = [
+      nutrients.carbsG > 0 ? `${Math.round(nutrients.carbsG)}g CHO` : null,
+      nutrients.fluidMl > 0 ? `${Math.round(nutrients.fluidMl)}ml` : null,
+      nutrients.sodiumMg > 0 ? `${Math.round(nutrients.sodiumMg)}mg sodio` : null,
+      nutrients.caffeineMg > 0 ? `${Math.round(nutrients.caffeineMg)}mg cafeína` : null,
+    ].filter(Boolean).join(' · ');
+    return [{
+      id: `plan-${item.id}-${index}`,
+      type,
+      scheduledAtSec: Math.round(timingMin * 60),
+      kmMark: Math.round(kmMark * 10) / 10,
+      message: `${assignmentName(item)} ×${item.quantity}`,
+      detail: details || item.note || undefined,
+      status: 'pending' as NotificationStatus,
+      payload: nutrients,
+    }];
+  });
+}
+
 export function buildFuelSchedule(
   competition: Competition,
   nutritionPlan?: RaceNutritionPlan,
@@ -163,11 +242,14 @@ export function buildFuelSchedule(
   const fluidLH = output.hydration.fluidIntakeLH;
   const sodiumMgH = output.hydration.sodiumMgH;
 
-  const carbs = buildCarbReminders(carbsGH, durationMin, pace);
-  const fluids = buildFluidReminders(fluidLH, sodiumMgH, durationMin, pace);
+  const savedPlan = nutritionPlan?.timeline?.length
+    ? buildSavedPlanReminders(competition, nutritionPlan.timeline, pace, hydrationStations)
+    : null;
+  const carbs = savedPlan ?? buildCarbReminders(carbsGH, durationMin, pace);
+  const fluids = savedPlan ? [] : buildFluidReminders(fluidLH, sodiumMgH, durationMin, pace);
 
   let caffeine: FuelNotification[] = [];
-  if (output.caffeine.totalMg > 0) {
+  if (!savedPlan && output.caffeine.totalMg > 0) {
     const cafScheduleMin: number[] = [];
     const cafDoses: number[] = [];
     const quarter = Math.round(durationMin * 0.25);

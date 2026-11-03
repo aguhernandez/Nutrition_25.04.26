@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ClipboardList, BookOpen, ChevronLeft, Search, UserRound, Loader2 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
-import { supabase } from '../../lib/supabase';
 import { getCoachAthletes } from '../../lib/hubApi';
 import NutritionAnamnesisV2 from './NutritionAnamnesisV2';
 import FoodDiary24h from './FoodDiary24h';
@@ -14,7 +13,7 @@ export default function HubAssessmentsView({ onBack }: Props) {
   const { profile } = useAuth();
   const { language } = usePreferences();
   const es = language === 'es';
-  const isProfessional = ['coach', 'trainer', 'head_coach', 'admin'].includes(profile?.role || '');
+  const isProfessional = ['coach', 'trainer', 'nutritionist', 'head_coach', 'admin'].includes(profile?.role || '');
   const [tab, setTab] = useState<'anamnesis' | 'diary'>('anamnesis');
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [selected, setSelected] = useState<Athlete | null>(isProfessional ? null : profile ? { id: profile.id, email: profile.email || '', full_name: profile.full_name || '' } : null);
@@ -24,16 +23,18 @@ export default function HubAssessmentsView({ onBack }: Props) {
   useEffect(() => {
     if (!isProfessional) return;
     (async () => {
-      const { data } = await supabase.from('profiles').select('id,email,full_name').eq('role', 'athlete').order('full_name');
-      const local = (data || []) as Athlete[];
       try {
         const hub = await getCoachAthletes(profile?.hub_user_id || profile?.email || '');
-        const known = new Set(local.map(a => a.email?.toLowerCase()));
-        for (const athlete of hub.athletes || []) {
-          if (!known.has(athlete.email.toLowerCase())) local.push({ id: athlete.id, email: athlete.email, full_name: athlete.full_name || athlete.email });
-        }
-      } catch { /* local roster remains available */ }
-      setAthletes(local.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+        const authorizedAthletes = (hub.athletes || []).map((athlete) => ({
+          id: athlete.id,
+          email: athlete.email,
+          full_name: athlete.full_name || athlete.name || athlete.email,
+        }));
+        setAthletes(authorizedAthletes.sort((a, b) => a.full_name.localeCompare(b.full_name)));
+      } catch {
+        // Never fall back to the local profiles table: it is not a coach roster.
+        setAthletes([]);
+      }
       setLoading(false);
     })();
   }, [isProfessional, profile?.email, profile?.hub_user_id]);

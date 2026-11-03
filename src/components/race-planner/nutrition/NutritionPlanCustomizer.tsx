@@ -16,7 +16,6 @@ import {
   Route,
   Trash2,
   X,
-  Zap,
 } from 'lucide-react';
 import type { NutritionCategory, NutritionProduct, RaceNutritionAssignment, RaceNutritionFood, RaceNutritionPlan, RaceNutritionRecipe } from '../../../types/nutrition';
 import type { Competition } from '../../../types/race';
@@ -236,15 +235,37 @@ export default function NutritionPlanCustomizer({ competition, onChange, athlete
     const eligible = products
       .filter((product) => product.carbs_g > 0 && acceptsCarbSource(product.category, choType))
       .sort((a, b) => Number(isPreferredProduct(b, preferredReferences)) - Number(isPreferredProduct(a, preferredReferences)));
-    const product = eligible[0];
     const totalTarget = Math.max(0, totalCarbsTarget);
-    if (!product || totalTarget <= 0) return;
+    if (!eligible.length || totalTarget <= 0) return;
 
-    const servings = Math.max(1, Math.ceil(totalTarget / product.carbs_g));
+    const preferredFirst = (items: NutritionProduct[]) => [...items].sort((a, b) => Number(isPreferredProduct(b, preferredReferences)) - Number(isPreferredProduct(a, preferredReferences)));
+    const drink = preferredFirst(eligible.filter((product) => product.category === 'drink'))[0];
+    const gel = preferredFirst(eligible.filter((product) => product.category === 'gel'))[0];
+    const selectedProducts = choType === 'mix' && drink && gel ? [drink, gel] : [eligible[0]];
+    const servingsByProduct = selectedProducts.map((product) => ({
+      product,
+      servings: Math.max(1, Math.ceil((totalTarget / selectedProducts.length) / product.carbs_g)),
+    }));
+    const plannedProducts: NutritionProduct[] = [];
+    const remaining = servingsByProduct.map(({ servings }) => servings);
+    while (remaining.some((count) => count > 0)) {
+      remaining.forEach((count, index) => {
+        if (count > 0) {
+          plannedProducts.push(servingsByProduct[index].product);
+          remaining[index] -= 1;
+        }
+      });
+    }
     const durationMinutes = Math.max(1, competition.raceData.expectedDurationMin);
-    const interval = durationMinutes / servings;
-    const autoItems: RaceNutritionAssignment[] = Array.from({ length: servings }, (_, index) => {
-      const timingMinutes = Math.min(durationMinutes, Math.max(1, Math.round(interval * (index + 1))));
+    const firstFuelMinute = Math.min(20, Math.max(15, Math.round(durationMinutes / (plannedProducts.length + 1))));
+    const finalBufferMinutes = Math.min(10, Math.max(3, Math.round(durationMinutes * 0.05)));
+    const interval = plannedProducts.length > 1
+      ? Math.max(5, (durationMinutes - finalBufferMinutes - firstFuelMinute) / (plannedProducts.length - 1))
+      : 0;
+    const autoItems: RaceNutritionAssignment[] = plannedProducts.map((product, index) => {
+      const timingMinutes = plannedProducts.length === 1
+        ? firstFuelMinute
+        : Math.min(durationMinutes - finalBufferMinutes, Math.max(firstFuelMinute, Math.round(firstFuelMinute + interval * index)));
       return {
         id: `auto-${product.id}-${index}`,
         competition_id: competition.id ?? 'local',
@@ -265,9 +286,10 @@ export default function NutritionPlanCustomizer({ competition, onChange, athlete
       };
     });
     setAssignments(autoItems);
+    const servingsLabel = servingsByProduct.map(({ product, servings }) => `${servings} × ${product.full_name}`).join(' + ');
     setMessage(isSpanish
-      ? `Propuesta automática: ${servings} × ${product.full_name} para alcanzar aproximadamente ${totalTarget} g de carbohidratos.`
-      : `Automatic proposal: ${servings} × ${product.full_name} to reach approximately ${totalTarget} g of carbohydrates.`);
+      ? `Propuesta automática: ${servingsLabel} para alcanzar aproximadamente ${totalTarget} g de carbohidratos.`
+      : `Automatic proposal: ${servingsLabel} to reach approximately ${totalTarget} g of carbohydrates.`);
   }, [assignments.length, assignmentsLoaded, athleteId, competition.id, competition.raceData.expectedDurationMin, competition.strategyPreferences.choType, isSpanish, loading, preferredReferences, preferencesLoaded, products, targetCarbsGH, totalCarbsTarget]);
 
   useEffect(() => {
@@ -385,6 +407,10 @@ export default function NutritionPlanCustomizer({ competition, onChange, athlete
   };
 
   const removeAssignment = async (id: string) => {
+    if (id.startsWith('local-') || id.startsWith('auto-')) {
+      setAssignments((current) => current.filter((item) => item.id !== id));
+      return;
+    }
     if (!(await deleteRaceNutritionAssignment(id))) return;
     setAssignments((current) => current.filter((item) => item.id !== id));
   };
