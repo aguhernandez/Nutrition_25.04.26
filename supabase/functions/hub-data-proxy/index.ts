@@ -22,6 +22,8 @@ const BRIDGE_ENDPOINTS = new Set([
   "scheduled-workouts",
   "activities",
   "push-nutrition-plan",
+  "save-anamnesis",
+  "save-food-diary",
 ]);
 
 const BRIDGE_ALIAS: Record<string, string> = {
