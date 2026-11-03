@@ -13,13 +13,13 @@
       "hasChanged": false,
       "hash": "baf011a9097bbb61ea3b7ed9a04bbf96c7e67a07a2c400271ee9cde6533b5457"
     },
+    "smart-nutrition-plan": {
+      "hasChanged": false,
+      "hash": "a9d93a65bdd6d33b34d0cbf450177813e6afa3b06816bbc5235e0c6ca8fae5cf"
+    },
     "usda-proxy": {
       "hasChanged": false,
       "hash": "383218625408fa9600e4537c54ddac44c0df1f639d48cc8d9b7cdb995e06e63a"
-    },
-    "smart-nutrition-plan": {
-      "hasChanged": false,
-      "hash": "1e0d30b922d014c6e792e5def894da7ac940f0cf42bfd15bd796bd37329be4f0"
     }
   }
 }

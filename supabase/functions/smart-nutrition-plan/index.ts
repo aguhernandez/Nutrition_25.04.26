@@ -23,6 +23,7 @@ type GenerationMode = "full" | "partial";
 interface Requester {
   id: string;
   role: string;
+  membership_slug: string | null;
 }
 
 interface SmartRequest {
@@ -76,7 +77,11 @@ async function getRequester(req: Request): Promise<Requester> {
   const data = await response.json().catch(() => null);
   const user = data?.user ?? data;
   if (!user?.id) throw new HttpError(401, "UNAUTHORIZED", "Session is not valid");
-  return { id: String(user.id), role: String(user.role ?? "athlete") };
+  return {
+    id: String(user.id),
+    role: String(user.role ?? "athlete"),
+    membership_slug: typeof user.membership_slug === "string" ? user.membership_slug : null,
+  };
 }
 
 async function getPlannerToken(satellite: ReturnType<typeof getServiceClient>): Promise<string> {
@@ -170,11 +175,21 @@ function extractWorkouts(data: unknown): Array<Record<string, unknown>> {
   return Array.isArray(list) ? list.map(asRecord) : [];
 }
 
-function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsData: unknown) {
+function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsData: unknown, diaryData: unknown) {
   const profile = asRecord(asRecord(profileData).profile ?? profileData);
   const bodyComposition = asRecord(profile.body_composition);
   const anamnesis = asRecord(asRecord(anamnesisData).anamnesis ?? anamnesisData);
   const sources = [bodyComposition, profile, anamnesis];
+
+  const now = Date.now();
+  const diaryRecord = asRecord(diaryData);
+  const diaryList = Array.isArray(diaryData)
+    ? diaryData
+    : diaryRecord.entries ?? diaryRecord.food_entries ?? diaryRecord.items ?? [];
+  const diaryEntries24h = (Array.isArray(diaryList) ? diaryList : []).filter((entry) => {
+    const date = typeof asRecord(entry).date === "string" ? new Date(String(asRecord(entry).date)).getTime() : NaN;
+    return Number.isFinite(date) && now - date <= 24 * 3600 * 1000 && date <= now + 3600 * 1000;
+  }).length;
 
   const weightKg = pickNumber(sources, ["weight_kg", "body_weight_kg", "weight"]);
   const heightCm = pickNumber(sources, ["height_cm", "body_height_cm", "height"]);
@@ -207,13 +222,21 @@ function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsDat
     weekly_training_minutes: Math.round(weeklyMinutes),
     weekly_estimated_impulse: Math.round(weeklyImpulse),
     upcoming_workouts: upcoming.length,
+    anamnesis_complete: Object.keys(anamnesis).length > 0,
+    diary_entries_24h: diaryEntries24h,
     captured_at: new Date().toISOString(),
   };
 }
 
 function missingFields(snapshot: ReturnType<typeof buildSnapshot>): string[] {
-  const required: Array<keyof ReturnType<typeof buildSnapshot>> = ["weight_kg", "height_cm", "age_years", "sex"];
-  return required.filter((field) => snapshot[field] === null);
+  const required: string[] = [];
+  if (snapshot.weight_kg === null) required.push("weight_kg");
+  if (snapshot.height_cm === null) required.push("height_cm");
+  if (snapshot.age_years === null) required.push("age_years");
+  if (snapshot.sex === null) required.push("sex");
+  if (!snapshot.anamnesis_complete) required.push("anamnesis");
+  if (snapshot.diary_entries_24h === 0) required.push("food_diary_24h");
+  return required;
 }
 
 function calculateTargets(snapshot: ReturnType<typeof buildSnapshot>) {
@@ -313,13 +336,14 @@ Deno.serve(async (req: Request) => {
     if (!isSelf && !PROFESSIONAL_ROLES.has(requester.role)) {
       throw new HttpError(403, "FORBIDDEN", "Role cannot access this athlete");
     }
-    if (athlete.membership_slug !== "pro") {
+    const athleteMembership = isSelf && requester.membership_slug ? requester.membership_slug : athlete.membership_slug;
+    if (athleteMembership !== "pro") {
       throw new HttpError(403, "MEMBERSHIP_REQUIRED", "Smart planning requires a Pro membership");
     }
 
     const plannerToken = await getPlannerToken(satellite);
     const hubAthleteId = athlete.hub_user_id ?? athlete.id;
-    if (!isSelf && !(await canProfessionalAccessAthlete(requester, hubAthleteId, plannerToken))) {
+    if (!isSelf && requester.role !== "admin" && !(await canProfessionalAccessAthlete(requester, hubAthleteId, plannerToken))) {
       throw new HttpError(403, "FORBIDDEN", "Athlete is not on this professional's roster");
     }
 
@@ -347,13 +371,14 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const [profileData, anamnesisData, workoutsData] = await Promise.all([
+    const [profileData, anamnesisData, workoutsData, diaryData] = await Promise.all([
       fetchBridge("athlete-profile", hubAthleteId, plannerToken),
       fetchBridge("anamnesis", hubAthleteId, plannerToken),
       fetchBridge("scheduled-workouts", hubAthleteId, plannerToken),
+      fetchBridge("food-diary", hubAthleteId, plannerToken),
     ]);
 
-    const snapshot = buildSnapshot(profileData, anamnesisData, workoutsData);
+    const snapshot = buildSnapshot(profileData, anamnesisData, workoutsData, diaryData);
     const missing = missingFields(snapshot);
     if (missing.length > 0) {
       throw new HttpError(422, "SMART_DATA_INCOMPLETE", "Athlete data is incomplete for a smart plan", { missing });
