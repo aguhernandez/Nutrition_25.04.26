@@ -6,6 +6,7 @@ import { getCoachAthletes } from '../../lib/hubApi';
 import type { HubCoachAthlete } from '../../lib/hubApi';
 import { usePreferences } from '../../lib/preferences';
 import FullMealEditor from './FullMealEditor';
+import PreferredSupplementsPanel from './PreferredSupplementsPanel';
 
 interface Athlete {
   id: string;
@@ -131,12 +132,15 @@ export default function CoachAthleteSelector({ onBack }: Props) {
 
   if (selected) {
     return (
-      <FullMealEditor
-        onBack={() => setSelected(null)}
-        targetUserId={selected.id}
-        targetUserName={selected.full_name}
-        targetUserEmail={selected.email}
-      />
+      <div>
+        <PreferredSupplementsPanel athleteId={selected.id} athleteName={selected.full_name} />
+        <FullMealEditor
+          onBack={() => setSelected(null)}
+          targetUserId={selected.id}
+          targetUserName={selected.full_name}
+          targetUserEmail={selected.email}
+        />
+      </div>
     );
   }
 

@@ -95,6 +95,10 @@ export default function RaceCourseView({
       if (cancelled) return;
       setElevationPoints(pts);
       setStations(stns);
+      // Keep an existing plan in sync with the real course profile too. This
+      // lets altitude-related safeguards use the highest recorded point when a
+      // saved race is reopened, without requiring a manual edit.
+      onElevationChange?.(pts, stns);
     }
     loadCourseData();
     return () => { cancelled = true; };
@@ -169,7 +173,7 @@ export default function RaceCourseView({
         className={`w-full flex items-center justify-between px-6 py-4 transition-colors ${hoverRow}`}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#514163' }}>
             <Mountain className="w-4 h-4 text-white" />
           </div>
           <span className={`font-body font-semibold ${textPrimary}`}>Course Profile & Hydration Stations</span>
@@ -196,7 +200,7 @@ export default function RaceCourseView({
               onClick={() => setActiveTab('elevation')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === 'elevation'
-                  ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                  ? 'bg-[#514163]/10 text-[#514163] border border-[#514163]/25'
                   : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -207,7 +211,7 @@ export default function RaceCourseView({
               onClick={() => setActiveTab('stations')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === 'stations'
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                  ? 'bg-[#fdda36]/25 text-[#514163] border border-[#fdda36]/60'
                   : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -216,7 +220,7 @@ export default function RaceCourseView({
               <span
                 className={`text-xs rounded-full px-1.5 py-0.5 ${
                   activeTab === 'stations'
-                    ? 'bg-cyan-500/30 text-cyan-400'
+                    ? 'bg-[#fdda36]/40 text-[#514163]'
                     : isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-200 text-gray-500'
                 }`}
               >
@@ -233,7 +237,7 @@ export default function RaceCourseView({
               <div className="grid grid-cols-3 gap-3 mb-4">
                 {[
                   { label: 'Max Elevation', value: maxElev, color: textPrimary },
-                  { label: 'Total Gain', value: `+${Math.round(climbCount)}`, color: 'text-red-400' },
+                  { label: 'Total Gain', value: `+${Math.round(climbCount)}`, color: 'text-[#514163]' },
                   { label: 'Elev. Range', value: maxElev - minElev, color: textPrimary },
                 ].map((stat) => (
                   <div
@@ -297,7 +301,7 @@ export default function RaceCourseView({
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                       savedOk
                         ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-sky-500/20 text-sky-400 border border-sky-500/30 hover:bg-sky-500/30'
+                        : 'bg-[#514163]/10 text-[#514163] border border-[#514163]/25 hover:bg-[#514163]/15'
                     }`}
                   >
                     {saving ? (

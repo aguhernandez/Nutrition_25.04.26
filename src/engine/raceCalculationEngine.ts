@@ -25,6 +25,10 @@ const CHO_INTENSITY_MAP: [number, number][] = [
   [0.85, 2.0],
 ];
 
+function raceDistanceKm(race: RaceData): number {
+  return race.distanceUnit === 'miles' ? race.distance * 1.60934 : race.distance;
+}
+
 function interpolateCHOUse(intensityFraction: number): number {
   const clamped = Math.min(0.85, Math.max(0.60, intensityFraction));
   for (let i = 0; i < CHO_INTENSITY_MAP.length - 1; i++) {
@@ -39,13 +43,12 @@ function interpolateCHOUse(intensityFraction: number): number {
 }
 
 function estimateIntensity(sport: Sport, athlete: AthleteData, race: RaceData): number {
-  const isCycling = sport.startsWith('cycling');
-  if (isCycling && athlete.thresholdPower > 0 && athlete.cp > 0) {
-    return athlete.thresholdPower / athlete.cp;
-  }
-  if (!isCycling && athlete.vvo2maxPace > 0) {
-    const racePaceMinKm = race.expectedDurationMin / race.distance;
-    return racePaceMinKm / athlete.vvo2maxPace;
+  const isPaceSport = sport === 'running' || sport === 'trail_running';
+  if (isPaceSport && athlete.vvo2maxPace > 0 && raceDistanceKm(race) > 0) {
+    const racePaceMinKm = race.expectedDurationMin / raceDistanceKm(race);
+    // Pace is inverse to speed: a 4:00/km race pace relative to a 3:00/km
+    // vVO2max pace is 3 / 4 = 75% of vVO2max, not 4 / 3.
+    return Math.min(0.95, Math.max(0.55, athlete.vvo2maxPace / racePaceMinKm));
   }
   const durationH = race.expectedDurationMin / 60;
   if (durationH <= 1) return 0.85;
@@ -72,7 +75,8 @@ function calcPacing(
   let intensityFraction = estimateIntensity(sport, athlete, race);
   if (prefs.target === 'safe') intensityFraction = Math.max(0.60, intensityFraction - 0.05);
   if (prefs.target === 'performance') intensityFraction = Math.min(0.90, intensityFraction + 0.02);
-  const paceMinKm = race.expectedDurationMin / race.distance;
+  const distanceKm = raceDistanceKm(race);
+  const paceMinKm = distanceKm > 0 ? race.expectedDurationMin / distanceKm : 0;
   let recommendation = '';
   if (prefs.target === 'performance') {
     recommendation = 'Start at race pace from km 1. Negative split if conditions allow. Push hard on final 20%.';
@@ -102,27 +106,34 @@ function calcCarbs(
   // NOT proportional to endogenous CHO use.
   // Based on Jeukendrup (2014), Burke et al. (2011), Jentjens & Jeukendrup (2005).
   let recommendedIntakeGH: number;
-  if (durationH < 0.75) {
+  if (durationH < 1) {
     recommendedIntakeGH = 0;
   } else if (durationH < 1.5) {
     recommendedIntakeGH = 30;
   } else if (durationH < 2) {
     recommendedIntakeGH = intensityFraction >= 0.75 ? 60 : 45;
+  } else if (durationH < 2.5) {
+    recommendedIntakeGH = 60;
   } else if (durationH < 3) {
-    recommendedIntakeGH = 90;
+    recommendedIntakeGH = prefs.gutTrained ? 75 : 60;
   } else {
-    // >3h: 90g/h baseline, up to 120g/h for gut-trained athletes using 2:1 glucose:fructose mix.
-    // Jeukendrup (2017) "Training the Gut" – 110-120g/h requires multi-transporter CHO.
+    // Targets above 90g/h require repeated gut training and a glucose/fructose
+    // blend. Do not prescribe them by default from race duration alone.
     if (prefs.gutTrained && athlete.highCarbExperience === 'experienced') {
-      recommendedIntakeGH = 110;
-    } else if (prefs.gutTrained) {
-      recommendedIntakeGH = 100;
-    } else {
       recommendedIntakeGH = 90;
+    } else if (prefs.gutTrained) {
+      recommendedIntakeGH = 75;
+    } else {
+      recommendedIntakeGH = 60;
     }
   }
-  if (prefs.carbTargetGH !== undefined && Number.isFinite(prefs.carbTargetGH)) {
-    recommendedIntakeGH = Math.max(0, Math.min(120, prefs.carbTargetGH));
+  if (durationH >= 1 && prefs.carbTargetGH !== undefined && Number.isFinite(prefs.carbTargetGH)) {
+    const ceiling = prefs.gutTrained && athlete.highCarbExperience === 'experienced'
+      ? 120
+      : prefs.gutTrained
+        ? 90
+        : 60;
+    recommendedIntakeGH = Math.max(0, Math.min(ceiling, prefs.carbTargetGH));
   }
   const totalCarbsG = Math.round(recommendedIntakeGH * durationH);
   const choType = prefs.choType;
@@ -196,9 +207,14 @@ function calcHydration(athlete: AthleteData, race: RaceData): HydrationStrategy 
     sweatRateLH = 0.9 * bodyWeightFactor * tempFactor * humidityFactor;
   }
   const sweatRateClamped = Math.min(2.5, Math.max(0.4, sweatRateLH));
-  const fluidIntakeLH = Math.round(sweatRateClamped * 0.7 * 10) / 10;
+  // Aim to replace most, not necessarily all, of predicted sweat loss. A
+  // conservative cap avoids prescribing impractical or excessive drinking.
+  const fluidIntakeLH = Math.round(Math.min(1.2, sweatRateClamped * 0.8) * 10) / 10;
   const totalFluidL = Math.round(fluidIntakeLH * durationH * 10) / 10;
-  const sodiumMgH = Math.round(fluidIntakeLH * 600);
+  // Without an individual sweat-sodium measurement, use a transparent,
+  // moderate default concentration rather than implying a personalised value.
+  const sodiumMgL = 600;
+  const sodiumMgH = Math.round(fluidIntakeLH * sodiumMgL);
   const totalSodiumMg = Math.round(sodiumMgH * durationH);
   const totalSweatL = sweatRateClamped * durationH;
   const fluidDeficitL = totalSweatL - totalFluidL;
@@ -206,6 +222,7 @@ function calcHydration(athlete: AthleteData, race: RaceData): HydrationStrategy 
   return {
     sweatRateLH: Math.round(sweatRateClamped * 100) / 100,
     fluidIntakeLH,
+    sodiumMgL,
     totalFluidL,
     sodiumMgH,
     totalSodiumMg,
@@ -219,30 +236,28 @@ function calcCaffeine(
   prefs: StrategyPreferences
 ): CaffeinePlan {
   const durationH = race.expectedDurationMin / 60;
-  const mgPerKg = prefs.target === 'performance' ? 5 : prefs.target === 'finish_strong' ? 4 : 3;
-  const rawTotal = athlete.bodyWeightKg * mgPerKg;
+  const mgPerKg = prefs.target === 'performance' ? 3 : 2;
+  const rawTotal = Math.min(400, athlete.bodyWeightKg * mgPerKg);
   const totalMg = Math.round(rawTotal / 25) * 25;
-  const preDoseMg = durationH > 2
-    ? Math.round(totalMg * 0.55 / 25) * 25
-    : totalMg;
 
   const midRaceDoses: CaffeineDose[] = [];
-  if (durationH > 1.5) {
-    const remaining = totalMg - preDoseMg;
-    const midTimingMin = Math.round(race.expectedDurationMin * 0.55);
-    midRaceDoses.push({
-      label: `At ~55% of race (${midTimingMin} min in)`,
-      timingMin: midTimingMin,
-      mg: remaining,
-    });
-  }
+  const roundDose = (mg: number) => Math.round(mg / 25) * 25;
+  let preDoseMg = totalMg;
   if (durationH > 4) {
-    const lateDose = Math.round(totalMg * 0.15 / 25) * 25;
-    midRaceDoses.push({
-      label: `At ~80% of race (${Math.round(race.expectedDurationMin * 0.8)} min in)`,
-      timingMin: Math.round(race.expectedDurationMin * 0.8),
-      mg: lateDose,
-    });
+    preDoseMg = roundDose(totalMg * 0.5);
+    const midDoseMg = roundDose(totalMg * 0.3);
+    const lateDoseMg = totalMg - preDoseMg - midDoseMg;
+    midRaceDoses.push({ label: `At ~55% of race (${Math.round(race.expectedDurationMin * 0.55)} min in)`, timingMin: Math.round(race.expectedDurationMin * 0.55), mg: midDoseMg });
+    if (lateDoseMg > 0) {
+      midRaceDoses.push({ label: `At ~80% of race (${Math.round(race.expectedDurationMin * 0.8)} min in)`, timingMin: Math.round(race.expectedDurationMin * 0.8), mg: lateDoseMg });
+    }
+  } else if (durationH > 1.5) {
+    preDoseMg = roundDose(totalMg * 0.6);
+    const midDoseMg = totalMg - preDoseMg;
+    if (midDoseMg > 0) {
+      const midTimingMin = Math.round(race.expectedDurationMin * 0.55);
+      midRaceDoses.push({ label: `At ~55% of race (${midTimingMin} min in)`, timingMin: midTimingMin, mg: midDoseMg });
+    }
   }
 
   const sources: string[] = [
@@ -254,7 +269,7 @@ function calcCaffeine(
 
   const notes = durationH < 1.5
     ? 'Single pre-race dose is optimal for short events. Only use caffeine if trained in practice.'
-    : 'Spread doses across race to maintain alertness and glycogen-sparing effect. Avoid caffeine in the last 90 min before your expected finish to prevent sleep disruption post-race.';
+    : 'The listed doses add up to the total plan. Test this exact timing in training and account for all caffeine sources, including coffee and drinks.';
 
   return { totalMg, mgPerKg, preDoseMg, preDoseMinBeforeStart: 60, midRaceDoses, sources, notes };
 }
@@ -405,8 +420,9 @@ function calcRisks(
   } else if (race.temperature > 28) {
     risks.push({ level: 'warning', message: `High temperature (${race.temperature}°C) – heat stress is likely. Pre-cool before start, monitor HR continuously, increase sodium intake.` });
   }
-  if (race.altitude > 2000) {
-    risks.push({ level: 'warning', message: `High altitude (${race.altitude}m) – VO2max may be reduced ~${Math.round((race.altitude - 1500) / 100)}%. Adjust pace expectations downward.` });
+  const highestAltitude = Math.max(race.altitude, race.maxAltitude ?? 0);
+  if (highestAltitude > 2000) {
+    risks.push({ level: 'warning', message: `High course altitude (up to ${highestAltitude}m) – pace and hydration tolerance may be affected. Use acclimatisation and an effort-based pacing plan.` });
   }
   if (athlete.giIssuesHistory && carbs.recommendedIntakeGH > 60) {
     risks.push({ level: 'warning', message: `GI issues history noted. Test all products in training. Prefer liquid carb sources. Avoid solid foods after 50% of race.` });

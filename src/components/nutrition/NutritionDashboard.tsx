@@ -5,6 +5,7 @@ import { usePreferences } from '../../lib/preferences';
 import { getAnamnesis, getDiaryRange } from '../../lib/nutritionService';
 import type { NutritionAnamnesis, DiaryEntry, Macros } from '../../types/nutritionModule';
 import type { NutritionTab } from './NutritionModule';
+import PreferredSupplementsPanel from './PreferredSupplementsPanel';
 
 interface Props {
   onNavigate: (view: NutritionTab) => void;
@@ -80,7 +81,7 @@ function FuelDayBadge({ type, active }: { type: string; active: boolean }) {
 }
 
 export default function NutritionDashboard({ onNavigate }: Props) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { language } = usePreferences();
   const [anamnesis, setAnamnesis] = useState<NutritionAnamnesis | null>(null);
   const [todayEntries, setTodayEntries] = useState<DiaryEntry[]>([]);
@@ -211,6 +212,8 @@ export default function NutritionDashboard({ onNavigate }: Props) {
 
   return (
     <div className="p-4 lg:p-6 space-y-6 max-w-5xl mx-auto">
+
+      <PreferredSupplementsPanel athleteId={profile?.id || user?.id} />
 
       <div className="flex items-start justify-between">
         <div>

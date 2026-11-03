@@ -32,9 +32,10 @@ const inputCls = 'input-brand';
 function getNextRaceDate(month: number, day: number): string {
   const now = new Date();
   const currentYear = now.getFullYear();
+  const today = new Date(currentYear, now.getMonth(), now.getDate());
   const candidate = new Date(currentYear, month - 1, day);
-  const nextOccurrence = candidate < now ? new Date(currentYear + 1, month - 1, day) : candidate;
-  return nextOccurrence.toISOString().split('T')[0];
+  const nextOccurrence = candidate < today ? new Date(currentYear + 1, month - 1, day) : candidate;
+  return `${nextOccurrence.getFullYear()}-${String(nextOccurrence.getMonth() + 1).padStart(2, '0')}-${String(nextOccurrence.getDate()).padStart(2, '0')}`;
 }
 
 export default function Step1RaceData({ sport, data, onChange, onCatalogSelect }: Props) {
@@ -46,7 +47,9 @@ export default function Step1RaceData({ sport, data, onChange, onCatalogSelect }
     onChange({ ...data, [key]: value });
 
   const handleCatalogSelect = (race: RaceCatalogEntry) => {
-    const raceDate = getNextRaceDate(race.typical_month, race.typical_day);
+    // A catalogued edition date is authoritative. Fall back to the recurring
+    // month/day only for races without a confirmed date.
+    const raceDate = race.race_date?.slice(0, 10) || getNextRaceDate(race.typical_month, race.typical_day);
     onChange({
       ...data,
       raceName: race.name,
@@ -209,6 +212,20 @@ export default function Step1RaceData({ sport, data, onChange, onCatalogSelect }
                 placeholder="150"
                 value={data.altitude || ''}
                 onChange={(e) => update('altitude', parseInt(e.target.value) || 0)}
+                className={inputCls}
+              />
+              <span className="font-body text-sm text-[#9ca3af]">m</span>
+            </div>
+          </Field>
+
+          <Field label="Maximum altitude" hint="Highest point on the course above sea level">
+            <div className="flex gap-2 items-center">
+              <input
+                type="number"
+                min="0"
+                placeholder="2500"
+                value={data.maxAltitude || ''}
+                onChange={(e) => update('maxAltitude', parseInt(e.target.value) || 0)}
                 className={inputCls}
               />
               <span className="font-body text-sm text-[#9ca3af]">m</span>

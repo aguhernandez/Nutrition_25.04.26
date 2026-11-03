@@ -95,14 +95,15 @@ function buildElevationSVG(
     + pts.slice(1).map(p => `L${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ')
     + ` L${tx(last.km).toFixed(1)},${(PAD.top + PH).toFixed(1)} L${tx(first.km).toFixed(1)},${(PAD.top + PH).toFixed(1)} Z`;
 
-  // Climb overlay paths
-  const climbPaths = gradSegs.filter(s => s.grade >= 4).map(seg => {
+  // Use a semantic difficulty scale rather than the former blue/red overlays.
+  // Absolute grade also makes steep descents visible as technically demanding.
+  const terrainLines = gradSegs.map(seg => {
     const segPts = pts.filter(p => p.km >= seg.start && p.km <= seg.end);
     if (segPts.length < 2) return '';
-    const d = `M${tx(segPts[0].km).toFixed(1)},${ty(segPts[0].elevationM).toFixed(1)} `
-      + segPts.slice(1).map(p => `L${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ')
-      + ` L${tx(segPts[segPts.length-1].km).toFixed(1)},${(PAD.top+PH).toFixed(1)} L${tx(segPts[0].km).toFixed(1)},${(PAD.top+PH).toFixed(1)} Z`;
-    return `<path d="${d}" fill="url(#climbG)" />`;
+    const absoluteGrade = Math.abs(seg.grade);
+    const color = absoluteGrade >= 8 ? C.purple : absoluteGrade >= 4 ? C.yellow : '#80A688';
+    const points = segPts.map(p => `${tx(p.km).toFixed(1)},${ty(p.elevationM).toFixed(1)}`).join(' ');
+    return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linejoin="round" stroke-linecap="round" />`;
   }).join('');
 
   // X ticks
@@ -134,10 +135,6 @@ function buildElevationSVG(
       <stop offset="0%" stop-color="${C.purple}" stop-opacity="0.35"/>
       <stop offset="100%" stop-color="${C.purple}" stop-opacity="0.03"/>
     </linearGradient>
-    <linearGradient id="climbG" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.4"/>
-      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.05"/>
-    </linearGradient>
   </defs>
 
   <!-- Y grid + labels -->
@@ -160,11 +157,9 @@ function buildElevationSVG(
   <!-- Area fill -->
   <path d="${fillD}" fill="url(#areaG)"/>
 
-  <!-- Climb highlights -->
-  ${climbPaths}
-
-  <!-- Elevation line -->
-  <polyline points="${linePts}" fill="none" stroke="${C.purple}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Terrain difficulty lines -->
+  <polyline points="${linePts}" fill="none" stroke="#c6bbd0" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+  ${terrainLines}
 
   <!-- Station markers -->
   ${stationMarkers}
@@ -524,7 +519,7 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
   const elevPts: ElevationPoint[] = competition.raceData.elevationPoints ?? [];
   const stationsRaw = competition.raceData.hydrationStations ?? generateHydrationStations(distKm, elevPts, undefined);
   const stationData = stationsRaw.map(s => ({ km: s.km, hasFood: s.hasFood }));
-  const maxElev = elevPts.length ? Math.max(...elevPts.map(p => p.elevationM)) : 0;
+  const maxElev = elevPts.length ? Math.max(...elevPts.map(p => p.elevationM)) : (competition.raceData.maxAltitude ?? 0);
   const minElev = elevPts.length ? Math.min(...elevPts.map(p => p.elevationM)) : 0;
   const climbTotal = elevPts.reduce((acc, p, i) => {
     if (i === 0) return acc;
@@ -654,7 +649,7 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
     <div style="flex:1;">
       ${logoImg}
       <div class="cover-race-name">${competition.raceName}</div>
-      <div class="cover-sub">${cfg.label} &nbsp;·&nbsp; ${competition.raceData.distance} ${competition.raceData.distanceUnit} (${Math.round(distKm * 10) / 10} km) &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C / ${competition.raceData.humidity}% RH &nbsp;·&nbsp; Alt. ${competition.raceData.altitude}m</div>
+      <div class="cover-sub">${cfg.label} &nbsp;·&nbsp; ${competition.raceData.distance} ${competition.raceData.distanceUnit} (${Math.round(distKm * 10) / 10} km) &nbsp;·&nbsp; ${durationLabel} &nbsp;·&nbsp; ${competition.raceData.temperature}°C / ${competition.raceData.humidity}% RH &nbsp;·&nbsp; Start ${competition.raceData.altitude}m &nbsp;·&nbsp; Max. ${competition.raceData.maxAltitude ?? maxElev}m</div>
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
       ${iconImg}
@@ -702,7 +697,9 @@ async function buildFullReportHTML(competition: Competition, editablePlan?: Edit
         <div class="elev-legend">
           <div class="elev-legend-item"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="${C.yellow}"/></svg> Water only</div>
           <div class="elev-legend-item"><svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#34d399"/></svg> Water + Food</div>
-          <div class="elev-legend-item"><svg width="12" height="8"><rect width="12" height="4" y="2" rx="2" fill="#ef444440"/></svg> Climb (&gt;4%)</div>
+          <div class="elev-legend-item"><svg width="12" height="8"><rect width="12" height="4" y="2" rx="2" fill="#80A688"/></svg> Easy (&lt;4%)</div>
+          <div class="elev-legend-item"><svg width="12" height="8"><rect width="12" height="4" y="2" rx="2" fill="${C.yellow}"/></svg> Intermediate (4–7%)</div>
+          <div class="elev-legend-item"><svg width="12" height="8"><rect width="12" height="4" y="2" rx="2" fill="${C.purple}"/></svg> Difficult (≥8%)</div>
         </div>
       </div>
     </div>` : ''}

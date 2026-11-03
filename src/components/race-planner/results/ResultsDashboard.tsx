@@ -35,7 +35,7 @@ import { pushRacePlan } from '../../../lib/hubApi';
 interface Props {
   competition: Competition;
   catalogEntry?: RaceCatalogEntry;
-  onSave: () => Promise<void>;
+  onSave: (nutritionPlan?: RaceNutritionPlan) => Promise<void>;
   onNewRace: () => void;
   hideSendToHub?: boolean;
   onSendToHubResult?: (status: 'success' | 'error') => void;
@@ -43,6 +43,7 @@ interface Props {
   savedElevationPoints?: ElevationPoint[];
   savedHydrationStations?: HydrationStation[];
   onElevationChange?: (points: ElevationPoint[], stations: HydrationStation[]) => void;
+  athleteId?: string | null;
 }
 
 function StatCard({ label, value, unit, color, isDark }: { label: string; value: string | number; unit?: string; color: string; isDark: boolean }) {
@@ -167,7 +168,7 @@ function Label({ children, isDark }: { children: React.ReactNode; isDark: boolea
 
 type HubPushStatus = 'idle' | 'pushing' | 'success' | 'error';
 
-export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner, savedElevationPoints, savedHydrationStations, onElevationChange }: Props) {
+export default function ResultsDashboard({ competition, catalogEntry, onSave, onNewRace, hideSendToHub = false, onSendToHubResult, coachSendBanner, savedElevationPoints, savedHydrationStations, onElevationChange, athleteId }: Props) {
   const { theme, language } = usePreferences();
   const isSpanish = language === 'es';
   const { user, profile } = useAuth();
@@ -209,7 +210,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave();
+    await onSave(nutritionPlan);
     setSaved(true);
     setSaving(false);
   };
@@ -460,7 +461,7 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
       </div>
 
       <div className="mb-4">
-        <NutritionPlanCustomizer competition={competition} onChange={setNutritionPlan} />
+        <NutritionPlanCustomizer competition={competition} athleteId={athleteId} onChange={setNutritionPlan} />
       </div>
 
       <div className="space-y-4">
@@ -546,7 +547,8 @@ export default function ResultsDashboard({ competition, catalogEntry, onSave, on
             </div>
             <div className="text-right">
               <Label isDark={isDark}>Per 500mL bottle</Label>
-              <div className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>~{Math.round(output.hydration.sodiumMgH * 0.5)} mg</div>
+              <div className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>~{Math.round((output.hydration.sodiumMgL ?? 600) / 2)} mg</div>
+              <div className={`text-xs mt-0.5 ${textMuted}`}>{output.hydration.sodiumMgL ?? 600} mg/L plan</div>
             </div>
           </InfoCard>
         </Section>

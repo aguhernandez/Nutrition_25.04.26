@@ -20,7 +20,7 @@ interface Props {
 
 const defaultRaceData: RaceData = {
   raceName: '', distance: 0, distanceUnit: 'km', elevationGain: 0,
-  expectedDurationMin: 0, temperature: 20, humidity: 60, altitude: 0, raceDate: '',
+  expectedDurationMin: 0, temperature: 20, humidity: 60, altitude: 0, maxAltitude: 0, raceDate: '',
 };
 
 const defaultAthleteData: AthleteData = {
