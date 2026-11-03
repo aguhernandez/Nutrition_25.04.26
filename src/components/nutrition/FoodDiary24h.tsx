@@ -2,10 +2,14 @@ import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ChevronRight, ChevronLeft, Loader2, Check, Clock } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { getFoodDiarySessions, saveFoodDiary } from '../../lib/hubApi';
 
 interface Props {
   onClose: () => void;
   lang?: 'es' | 'en';
+  targetAthleteId?: string;
+  targetAthleteEmail?: string;
+  embedded?: boolean;
 }
 
 interface DiaryEntry {
@@ -58,7 +62,7 @@ const EMPTY_ENTRY: Omit<DiaryEntry, 'id'> = {
   needs_review: false,
 };
 
-export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
+export default function FoodDiary24h({ onClose, lang = 'es', targetAthleteId, targetAthleteEmail, embedded = false }: Props) {
   const { profile } = useAuth();
   const [step, setStep] = useState(0);
   const [periodHours, setPeriodHours] = useState(24);
@@ -75,12 +79,46 @@ export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
   const t = (es: string, en: string) => lang === 'es' ? es : en;
   const mealTypes = lang === 'es' ? MEAL_TYPES_ES : MEAL_TYPES_EN;
   const days = lang === 'es' ? DAYS_ES : DAYS_EN;
+  const hubAthleteRef = targetAthleteId || targetAthleteEmail;
+  const hubMode = Boolean(hubAthleteRef);
 
   useEffect(() => {
+    if (hubMode && hubAthleteRef) {
+      getFoodDiarySessions(hubAthleteRef).then((sessions) => {
+        const session = sessions[0];
+        if (session) {
+          setSessionId(session.id || null);
+          setPeriodHours(session.period_hours || 24);
+          setEntries((session.entries || []).map((entry) => ({
+            id: entry.id || crypto.randomUUID(), entry_time: entry.entry_time || '', meal_type: entry.meal_type || 'other',
+            food_description: entry.food_description || '', estimated_calories: entry.estimated_calories || 0,
+            estimated_carbs_g: entry.estimated_carbs_g || 0, estimated_protein_g: entry.estimated_protein_g || 0,
+            estimated_fat_g: entry.estimated_fat_g || 0, additional_notes: entry.additional_notes || '', needs_review: entry.needs_review || false,
+          })));
+          setFinalized(session.status === 'completed');
+        }
+      }).catch(() => undefined);
+      return;
+    }
     if (step === 1 && !sessionId && profile?.id && !profile.id.startsWith('demo-')) {
       createSession();
     }
-  }, [step]);
+  }, [step, hubMode, hubAthleteRef]);
+
+  const persistHubSession = async (nextEntries: DiaryEntry[], status = 'in_progress') => {
+    if (!hubMode || !hubAthleteRef) return;
+    const totals = nextEntries.reduce((a, e) => ({
+      calories: a.calories + (e.estimated_calories || 0), protein_g: a.protein_g + (e.estimated_protein_g || 0),
+      carbs_g: a.carbs_g + (e.estimated_carbs_g || 0), fat_g: a.fat_g + (e.estimated_fat_g || 0),
+    }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
+    const savedSession = await saveFoodDiary(hubAthleteRef, {
+      id: sessionId || undefined, period_hours: periodHours, start_date: new Date().toISOString().split('T')[0],
+      day_of_week: days[selectedDay], status, total_calories: totals.calories, total_protein_g: totals.protein_g,
+      total_carbs_g: totals.carbs_g, total_fat_g: totals.fat_g, completed_at: status === 'completed' ? new Date().toISOString() : null,
+      entries: nextEntries,
+    });
+    if (savedSession?.id) setSessionId(savedSession.id);
+  };
 
   const createSession = async () => {
     const { data } = await supabase
@@ -130,6 +168,7 @@ export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
 
     if (editingEntry) {
       setEntries((prev) => prev.map((e) => e.id === editingEntry.id ? newEntry : e));
+      if (hubMode) await persistHubSession(entries.map((e) => e.id === editingEntry.id ? newEntry : e));
       if (sessionId) {
         await supabase.from('food_diary_entries').update({
           entry_time: entryForm.entry_time,
@@ -144,6 +183,7 @@ export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
       }
     } else {
       setEntries((prev) => [...prev, newEntry]);
+      if (hubMode) await persistHubSession([...entries, newEntry]);
       if (sessionId) {
         const { data } = await supabase.from('food_diary_entries').insert({
           session_id: sessionId,
@@ -168,10 +208,13 @@ export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
   };
 
   const handleDeleteEntry = async (id: string) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+    const nextEntries = entries.filter((e) => e.id !== id);
+    setEntries(nextEntries);
+    if (hubMode) await persistHubSession(nextEntries);
     if (sessionId) {
       await supabase.from('food_diary_entries').delete().eq('id', id);
     }
+    if (hubMode) await persistHubSession(entries, 'completed');
   };
 
   const handleFinalize = async () => {
@@ -212,8 +255,8 @@ export default function FoodDiary24h({ onClose, lang = 'es' }: Props) {
   const totals = calcTotals();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl" style={{ border: '2px solid #e5e7eb' }}>
+    <div className={embedded ? 'w-full' : 'fixed inset-0 z-50 flex items-center justify-center p-4'} style={embedded ? undefined : { backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className={`bg-white ${embedded ? 'w-full' : 'rounded-2xl w-full max-w-2xl max-h-[90vh]'} flex flex-col shadow-2xl`} style={{ border: '2px solid #e5e7eb' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#e5e7eb' }}>
           <div>
