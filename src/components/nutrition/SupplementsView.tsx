@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Search, Plus, Trash2, CreditCard as Edit2, X, Save, Loader2, Zap, Filter, ChevronDown } from 'lucide-react';
+import { ChevronLeft, Search, Plus, Trash2, CreditCard as Edit2, X, Save, Loader2, Zap, Filter, ChevronDown, Heart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
+import { getPreferredSupplementIds, isLocalProfileId, setPreferredSupplement } from '../../lib/preferredSupplements';
 
 interface Props {
   onBack: () => void;
@@ -136,8 +137,8 @@ function MacroPill({ label, value, unit, color }: { label: string; value: number
   );
 }
 
-function SupplementCard({ supp, onEdit, onDelete, isAdmin, es }: {
-  supp: Supplement; onEdit: () => void; onDelete: () => void; isAdmin: boolean; es: boolean;
+function SupplementCard({ supp, onEdit, onDelete, isAdmin, es, isPreferred, onTogglePreferred }: {
+  supp: Supplement; onEdit: () => void; onDelete: () => void; isAdmin: boolean; es: boolean; isPreferred: boolean; onTogglePreferred: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const form = FORM_CONFIG[supp.product_form] ?? { bg: '#f3f4f6', color: '#6b7280', label_es: supp.product_form, label_en: supp.product_form };
@@ -223,6 +224,11 @@ function SupplementCard({ supp, onEdit, onDelete, isAdmin, es }: {
           </div>
 
           <div className="flex items-start gap-1 flex-shrink-0">
+            <button onClick={onTogglePreferred}
+              className="p-1.5 rounded-lg hover:bg-pink-50 transition-all"
+              title={isPreferred ? (es ? 'Quitar de preferidos' : 'Remove from preferred') : (es ? 'Marcar como preferido' : 'Mark as preferred')}>
+              <Heart className="w-3.5 h-3.5" style={{ color: isPreferred ? '#be185d' : '#9ca3af', fill: isPreferred ? '#be185d' : 'transparent' }} />
+            </button>
             {isAdmin && (
               <>
                 <button onClick={onEdit}
@@ -539,10 +545,16 @@ export default function SupplementsView({ onBack }: Props) {
   const [editingSupp, setEditingSupp] = useState<Supplement | null>(null);
   const [saving, setSaving] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [preferredIds, setPreferredIds] = useState<string[]>([]);
 
   useEffect(() => {
     loadSupplements();
   }, []);
+
+  useEffect(() => {
+    if (!isLocalProfileId(profile?.id)) return;
+    getPreferredSupplementIds(profile.id).then(({ data }) => setPreferredIds(data));
+  }, [profile?.id]);
 
   const loadSupplements = async () => {
     setLoading(true);
@@ -615,9 +627,18 @@ export default function SupplementsView({ onBack }: Props) {
   };
 
   const hasActiveFilters = !!(regionFilter || formFilter || categoryFilter || brandFilter);
+  const visiblePreferred = filtered.filter((supp) => preferredIds.includes(supp.id));
+
+  const togglePreferred = async (supplementId: string) => {
+    if (!isLocalProfileId(profile?.id)) return;
+    const nextPreferred = !preferredIds.includes(supplementId);
+    setPreferredIds((current) => nextPreferred ? [...current, supplementId] : current.filter((id) => id !== supplementId));
+    const { error } = await setPreferredSupplement(profile.id, supplementId, nextPreferred);
+    if (error) setPreferredIds((current) => nextPreferred ? current.filter((id) => id !== supplementId) : [...current, supplementId]);
+  };
 
   return (
-    <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-4 lg:p-6 max-w-7xl mx-auto space-y-5">
 
       <div className="flex items-center gap-3">
         <button onClick={onBack}
@@ -760,42 +781,28 @@ export default function SupplementsView({ onBack }: Props) {
         })}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-            style={{ borderColor: '#fdda36', borderTopColor: 'transparent' }} />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+        <div>
+          {loading ? (
+            <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#fdda36', borderTopColor: 'transparent' }} /></div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16 rounded-2xl" style={{ border: '2px dashed #e5e7eb', backgroundColor: '#fafafa' }}><Zap className="w-10 h-10 mx-auto mb-3" style={{ color: '#d1d5db' }} /><p className="text-sm font-medium" style={{ color: '#6b7280' }}>{es ? 'No se encontraron suplementos' : 'No supplements found'}</p><p className="text-xs mt-1" style={{ color: '#9ca3af' }}>{es ? 'Ajusta los filtros para ver más resultados' : 'Try adjusting filters'}</p></div>
+          ) : (
+            <>
+              <div className="text-xs" style={{ color: '#9ca3af' }}>{es ? `Mostrando ${filtered.length} de ${supplements.length} suplementos` : `Showing ${filtered.length} of ${supplements.length} supplements`}</div>
+              <div className="space-y-3 mt-3">
+                {filtered.map((supp) => <SupplementCard key={supp.id} supp={supp} isAdmin={isAdmin} isPreferred={preferredIds.includes(supp.id)} onTogglePreferred={() => togglePreferred(supp.id)} onEdit={() => { setEditingSupp(supp); setShowForm(true); }} onDelete={() => handleDelete(supp.id)} es={es} />)}
+              </div>
+            </>
+          )}
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ border: '2px dashed #e5e7eb', backgroundColor: '#fafafa' }}>
-          <Zap className="w-10 h-10 mx-auto mb-3" style={{ color: '#d1d5db' }} />
-          <p className="text-sm font-medium" style={{ color: '#6b7280' }}>
-            {es ? 'No se encontraron suplementos' : 'No supplements found'}
-          </p>
-          <p className="text-xs mt-1" style={{ color: '#9ca3af' }}>
-            {es ? 'Ajusta los filtros para ver más resultados' : 'Try adjusting filters'}
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="text-xs" style={{ color: '#9ca3af' }}>
-            {es
-              ? `Mostrando ${filtered.length} de ${supplements.length} suplementos`
-              : `Showing ${filtered.length} of ${supplements.length} supplements`}
-          </div>
-          <div className="space-y-3">
-            {filtered.map((supp) => (
-              <SupplementCard
-                key={supp.id}
-                supp={supp}
-                isAdmin={isAdmin}
-                onEdit={() => { setEditingSupp(supp); setShowForm(true); }}
-                onDelete={() => handleDelete(supp.id)}
-                es={es}
-              />
-            ))}
-          </div>
-        </>
-      )}
+
+        <aside className="lg:sticky lg:top-4 rounded-2xl p-4" style={{ backgroundColor: '#fffaf0', border: '1.5px solid #fdda36' }}>
+          <div className="flex items-center gap-2 mb-1"><Heart className="w-4 h-4" style={{ color: '#be185d', fill: '#be185d' }} /><h2 className="font-heading font-bold text-base" style={{ color: '#514163' }}>{es ? 'Mis preferidos' : 'My preferred supplements'}</h2></div>
+          <p className="text-xs mb-4" style={{ color: '#6b7280' }}>{es ? 'Se muestran aquí con los mismos filtros de la biblioteca.' : 'This list follows the same library filters.'}</p>
+          {visiblePreferred.length === 0 ? <div className="rounded-xl p-4 text-center text-xs" style={{ backgroundColor: '#fff', color: '#9ca3af' }}>{es ? 'Marca suplementos con el corazón para verlos aquí.' : 'Use the heart to add supplements here.'}</div> : <div className="space-y-2">{visiblePreferred.map((supp) => <div key={supp.id} className="flex items-center gap-2 rounded-xl p-2.5" style={{ backgroundColor: '#fff', border: '1px solid #f3d56a' }}><div className="min-w-0 flex-1"><div className="truncate text-xs font-semibold" style={{ color: '#1f2937' }}>{es ? (supp.name_es || supp.name_en) : (supp.name_en || supp.name_es)}</div><div className="truncate text-[11px]" style={{ color: '#9ca3af' }}>{supp.brand || (es ? 'Sin marca' : 'No brand')}</div></div><button onClick={() => togglePreferred(supp.id)} className="p-1 rounded-lg hover:bg-pink-50"><Heart className="w-3.5 h-3.5" style={{ color: '#be185d', fill: '#be185d' }} /></button></div>)}</div>}
+        </aside>
+      </div>
 
       {showForm && (
         <SupplementForm

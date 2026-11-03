@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, X, CheckCircle, Zap, Droplets, Flame } from 'lucide-react';
 import type { NutritionProduct, NutritionCategory } from '../../../types/nutrition';
 import { usePreferences } from '../../../lib/preferences';
-import { getPreferredSupplementIds } from '../../../lib/preferredSupplements';
+import { getPreferredSupplementReferences, type PreferredSupplementReference } from '../../../lib/preferredSupplements';
 
 interface Props {
   products: NutritionProduct[];
@@ -48,7 +48,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<NutritionProduct | null>(null);
-  const [preferredIds, setPreferredIds] = useState<string[]>([]);
+  const [preferredReferences, setPreferredReferences] = useState<PreferredSupplementReference[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
 
   useEffect(() => {
     let active = true;
-    getPreferredSupplementIds(athleteId).then(({ data }) => { if (active) setPreferredIds(data); });
+    getPreferredSupplementReferences(athleteId).then(({ data }) => { if (active) setPreferredReferences(data); });
     return () => { active = false; };
   }, [athleteId]);
 
@@ -74,6 +74,15 @@ export default function ProductSelector({ products, categories, selectedId, plac
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const isPreferred = (product: NutritionProduct) => {
+    const productText = `${product.brand} ${product.full_name} ${product.product_name}`.toLowerCase();
+    return preferredReferences.some((reference) => reference.foodId === product.id || (
+      reference.nameEn && productText.includes(reference.nameEn.toLowerCase())
+    ) || (
+      reference.nameEs && productText.includes(reference.nameEs.toLowerCase())
+    ));
+  };
+
   const filtered = products
     .filter((p) => {
       if (categories && !categories.includes(p.category)) return false;
@@ -81,7 +90,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
       const q = query.toLowerCase();
       return p.full_name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.notes.toLowerCase().includes(q);
     })
-    .sort((a, b) => Number(preferredIds.includes(b.id)) - Number(preferredIds.includes(a.id)));
+    .sort((a, b) => Number(isPreferred(b)) - Number(isPreferred(a)));
 
   const handleSelect = (p: NutritionProduct) => {
     setSelected(p);
@@ -193,7 +202,7 @@ export default function ProductSelector({ products, categories, selectedId, plac
                         style={{ color: isDark ? '#f3f4f6' : '#1f2937' }}
                       >
                         {p.full_name}
-                        {preferredIds.includes(p.id) && <span className="ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color: '#514163', backgroundColor: '#fdda36' }}>★ Preferred</span>}
+                        {isPreferred(p) && <span className="ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ color: '#514163', backgroundColor: '#fdda36' }}>★ Preferred</span>}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-xs" style={{ color: textMuted }}>
