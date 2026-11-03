@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Apple, Flame, TrendingUp, ClipboardList, ChevronRight, Zap, Target, Award, BookOpen, MessageCircle, BarChart2, Trophy, MessageSquare, Microscope } from 'lucide-react';
+import { Apple, Flame, TrendingUp, ClipboardList, ChevronRight, Zap, Target, Award, MessageCircle, BarChart2, Trophy, MessageSquare, Microscope } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
 import { getAnamnesis, getDiaryRange } from '../../lib/nutritionService';
@@ -149,17 +149,10 @@ export default function NutritionDashboard({ onNavigate }: Props) {
 
   const QUICK_CARDS = [
     {
-      id: 'anamnesis' as NutritionTab,
+      id: 'assessments' as NutritionTab,
       icon: ClipboardList,
-      title: es ? 'Anamnesis' : 'Anamnesis',
-      desc: es ? 'Evaluación nutricional' : 'Nutritional assessment',
-      highlight: false,
-    },
-    {
-      id: 'diary' as NutritionTab,
-      icon: BookOpen,
-      title: es ? 'Diario 24-48h' : '24-48h Diary',
-      desc: es ? 'Registro con IA' : 'AI-powered logging',
+      title: es ? 'Anamnesis / 24 horas' : 'Anamnesis / 24 hours',
+      desc: es ? 'Evaluaciones nutricionales del Hub' : 'Nutrition assessments from Hub',
       highlight: false,
     },
     {
