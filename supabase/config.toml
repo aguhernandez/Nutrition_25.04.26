@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.race-info-lookup]
 verify_jwt = false
+
+[functions.smart-nutrition-plan]
+verify_jwt = false

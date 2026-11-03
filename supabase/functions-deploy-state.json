@@ -7,7 +7,7 @@
     },
     "hub-data-proxy": {
       "hasChanged": false,
-      "hash": "4773cbb469a673894d0207ca551a52822049a37ea49557b35113c5726783132c"
+      "hash": "173b7c78bdd6edf673a8e67859947f976092889a2395a4a468d22c3699a8836c"
     },
     "race-info-lookup": {
       "hasChanged": false,
@@ -16,6 +16,10 @@
     "usda-proxy": {
       "hasChanged": false,
       "hash": "383218625408fa9600e4537c54ddac44c0df1f639d48cc8d9b7cdb995e06e63a"
+    },
+    "smart-nutrition-plan": {
+      "hasChanged": false,
+      "hash": "1e0d30b922d014c6e792e5def894da7ac940f0cf42bfd15bd796bd37329be4f0"
     }
   }
 }
