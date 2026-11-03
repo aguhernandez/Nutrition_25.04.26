@@ -3,11 +3,14 @@ import { ChevronLeft, ChevronRight, Save, Loader2, Check, User, Dumbbell, Utensi
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
 import { supabase } from '../../lib/supabase';
+import { getNutritionAnamnesis, saveNutritionAnamnesis } from '../../lib/hubApi';
 import { calculateBMR, calculateTDEE } from '../../utils/nutritionCalculations';
 
 interface Props {
   onBack: () => void;
   lang?: string;
+  targetAthleteId?: string;
+  targetAthleteEmail?: string;
 }
 
 const ACTIVITY_FACTORS = {
@@ -118,7 +121,7 @@ function SelectInput({ value, onChange, options }: { value: string; onChange: (v
   );
 }
 
-export default function NutritionAnamnesisV2({ onBack, lang }: Props) {
+export default function NutritionAnamnesisV2({ onBack, lang, targetAthleteId, targetAthleteEmail }: Props) {
   const { profile } = useAuth();
   const { language } = usePreferences();
   const es = (lang ?? language) === 'es';
@@ -133,7 +136,20 @@ export default function NutritionAnamnesisV2({ onBack, lang }: Props) {
   const t = (esStr: string, en: string) => es ? esStr : en;
 
   useEffect(() => {
-    if (!profile?.id || profile.id.startsWith('demo-')) { setLoading(false); return; }
+    const athleteRef = targetAthleteId || targetAthleteEmail || profile?.id;
+    if (!athleteRef || athleteRef.startsWith('demo-')) { setLoading(false); return; }
+    if (targetAthleteId || targetAthleteEmail) {
+      getNutritionAnamnesis(athleteRef).then((data) => {
+        if (data) {
+          setExistingId(data.id || null);
+          setForm({
+            age: data.age?.toString() || '', sex: data.sex || '', height_cm: data.height_cm?.toString() || '', weight_kg: data.weight_kg?.toString() || '', occupation: data.occupation || '', activity_level: data.activity_level || 'moderate', work_hours: data.work_hours?.toString() || '', medical_conditions: data.medical_conditions || '', medications_supplements: data.medications_supplements || '', allergies_intolerances: data.allergies_intolerances || '', sleep_hours: data.sleep_hours?.toString() || '', sleep_quality: data.sleep_quality || 'good', energy_levels: data.energy_levels || 'moderate', stress_level: data.stress_level?.toString() || 'moderate', sport: data.sport || data.primary_sport || '', training_frequency: data.training_frequency || '', training_hours_weekly: data.training_hours_weekly?.toString() || '', training_time: data.training_time || '', pre_workout_nutrition: data.pre_workout_nutrition || '', during_workout_nutrition: data.during_workout_nutrition || '', post_workout_nutrition: data.post_workout_nutrition || '', eating_pattern: data.eating_pattern || '', dietary_preferences: data.dietary_preferences || '', dietary_restrictions: data.dietary_restrictions || '', breakfast_description: data.breakfast_description || '', lunch_description: data.lunch_description || '', dinner_description: data.dinner_description || '', snacks_description: data.snacks_description || '', beverages_description: data.beverages_description || '', food_likes: data.food_likes || '', food_dislikes: data.food_dislikes || '', cooking_frequency: data.cooking_frequency || '', eating_out_frequency: data.eating_out_frequency || '', appetite_changes: data.appetite_changes || '', relationship_with_food: data.relationship_with_food || '', main_goal: data.main_goal || 'performance', nutrition_goals: data.nutrition_goals || '', performance_expectations: data.performance_expectations || '', upcoming_events: data.upcoming_events || '', additional_notes: data.additional_notes || '',
+          });
+        }
+        setLoading(false);
+      }).catch(() => setLoading(false));
+      return;
+    }
     supabase
       .from('nutrition_anamnesis_v2')
       .select('*')
@@ -187,7 +203,7 @@ export default function NutritionAnamnesisV2({ onBack, lang }: Props) {
         }
         setLoading(false);
       });
-  }, [profile?.id]);
+  }, [profile?.id, targetAthleteId, targetAthleteEmail]);
 
   const f = (key: keyof FormData) => form[key];
   const set = (key: keyof FormData) => (val: string) => setForm((prev) => ({ ...prev, [key]: val }));
@@ -270,6 +286,18 @@ export default function NutritionAnamnesisV2({ onBack, lang }: Props) {
       updated_at: new Date().toISOString(),
       is_complete: section === SECTIONS.length - 1,
     };
+
+    if (targetAthleteId || targetAthleteEmail) {
+      setSaving(true);
+      try {
+        await saveNutritionAnamnesis(targetAthleteId || targetAthleteEmail!, payload);
+        setSaved(true);
+        window.setTimeout(() => setSaved(false), 2500);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     if (existingId) {
       await supabase.from('nutrition_anamnesis_v2').update(payload).eq('id', existingId);
