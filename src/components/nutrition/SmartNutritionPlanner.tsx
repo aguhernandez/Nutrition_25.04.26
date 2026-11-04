@@ -229,7 +229,7 @@ export default function SmartNutritionPlanner({
                   {preflight.contextual_plan.warnings.length > 0 && (
                     <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
                       <p className="font-bold">{copy('Revisión requerida antes de aplicar', 'Review required before applying')}</p>
-                      <p className="mt-1">{preflight.contextual_plan.warnings.map((warning) => warning.replaceAll('_', ' ').toLowerCase()).join(' · ')}</p>
+                      <p className="mt-1">{preflight.contextual_plan.warnings.map((warning) => warning.replace(/_/g, ' ').toLowerCase()).join(' · ')}</p>
                     </div>
                   )}
                 </div>
