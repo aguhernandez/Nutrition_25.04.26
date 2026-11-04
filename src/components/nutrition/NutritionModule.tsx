@@ -15,6 +15,7 @@ import MicronutrientSearch from './MicronutrientSearch';
 import MenuTemplatesView from './MenuTemplatesView';
 import CoachAthleteSelector from './CoachAthleteSelector';
 import HubAssessmentsView from './HubAssessmentsView';
+import SmartNutritionPlanner from './SmartNutritionPlanner';
 import { useAuth } from '../../lib/auth';
 
 export type NutritionTab =
@@ -34,7 +35,8 @@ export type NutritionTab =
   | 'race-protocol'
   | 'coach-notes'
   | 'micronutrients'
-  | 'assessments';
+  | 'assessments'
+  | 'smart-plan';
 
 
 interface Props {
@@ -79,6 +81,17 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
       case 'shopping': return <ShoppingList onBack={() => handleSetTab('dashboard')} />;
       case 'anamnesis': return <NutritionAnamnesisV2 onBack={() => handleSetTab('dashboard')} />;
       case 'assessments': return <HubAssessmentsView onBack={() => handleSetTab('dashboard')} />;
+      case 'smart-plan':
+        return isCoach || isAdmin
+          ? <CoachAthleteSelector onBack={() => handleSetTab('dashboard')} mode="smart" />
+          : profile
+            ? <SmartNutritionPlanner
+                athleteId={profile.id}
+                planKind="personal"
+                onBack={() => handleSetTab('dashboard')}
+                onOpenAssessments={() => handleSetTab('assessments')}
+              />
+            : <NutritionDashboard onNavigate={handleSetTab} />;
       case 'one-on-one': return <NutritionOneOnOne onBack={() => handleSetTab('dashboard')} />;
       case 'admin-foods': return <AdminFoodsView onBack={() => handleSetTab('dashboard')} />;
       case 'supplements': return <SupplementsView onBack={() => handleSetTab('dashboard')} />;
