@@ -6,6 +6,7 @@ import { getCoachAthletes } from '../../lib/hubApi';
 import type { HubCoachAthlete } from '../../lib/hubApi';
 import { usePreferences } from '../../lib/preferences';
 import FullMealEditor from './FullMealEditor';
+import SmartNutritionPlanner from './SmartNutritionPlanner';
 
 interface Athlete {
   id: string;
@@ -17,9 +18,10 @@ interface Athlete {
 
 interface Props {
   onBack: () => void;
+  mode?: 'editor' | 'smart';
 }
 
-export default function CoachAthleteSelector({ onBack }: Props) {
+export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props) {
   const { profile } = useAuth();
   const { language } = usePreferences();
   const [athletes, setAthletes] = useState<Athlete[]>([]);
@@ -130,6 +132,18 @@ export default function CoachAthleteSelector({ onBack }: Props) {
   };
 
   if (selected) {
+    if (mode === 'smart') {
+      return (
+        <SmartNutritionPlanner
+          athleteId={selected.id}
+          athleteName={selected.full_name}
+          planKind="professional"
+          onBack={() => setSelected(null)}
+          onDraftCreated={() => setSelected(null)}
+        />
+      );
+    }
+
     return (
       <FullMealEditor
         onBack={() => setSelected(null)}
@@ -165,10 +179,14 @@ export default function CoachAthleteSelector({ onBack }: Props) {
           </div>
           <div>
             <h1 className="font-heading text-xl" style={{ color: '#1f2937' }}>
-              {language === 'es' ? 'Planes de Comidas' : 'Meal Plans'}
+              {mode === 'smart'
+                ? (language === 'es' ? 'Planificación Inteligente' : 'Smart Planning')
+                : (language === 'es' ? 'Planes de Comidas' : 'Meal Plans')}
             </h1>
             <p className="font-body text-xs mt-0.5" style={{ color: '#9ca3af' }}>
-              {language === 'es' ? 'Selecciona un atleta para planificar' : 'Select an athlete to plan for'}
+              {mode === 'smart'
+                ? (language === 'es' ? 'Selecciona un atleta autorizado' : 'Select an authorized athlete')
+                : (language === 'es' ? 'Selecciona un atleta para planificar' : 'Select an athlete to plan for')}
             </p>
           </div>
         </div>
