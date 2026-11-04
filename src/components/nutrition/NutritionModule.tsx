@@ -48,6 +48,7 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
   const { profile } = useAuth();
   const [tab, setTab] = useState<NutritionTab>(initialTab);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
+  const [smartDraftId, setSmartDraftId] = useState<string | undefined>(undefined);
   const isAdmin = profile?.role === 'admin';
   const isCoach = profile?.role === 'coach';
 
@@ -76,7 +77,7 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
       case 'recipes': return <RecipesView onBack={() => handleSetTab('dashboard')} isAdmin={isAdmin} />;
       case 'planner': return isCoach || isAdmin
         ? <CoachAthleteSelector onBack={() => handleSetTab('dashboard')} />
-        : <FullMealEditor onBack={() => handleSetTab('dashboard')} />;
+        : <FullMealEditor initialPlanId={smartDraftId} onBack={() => { setSmartDraftId(undefined); handleSetTab('dashboard'); }} />;
       case 'diary': return <DailyDiary onBack={() => handleSetTab('dashboard')} />;
       case 'shopping': return <ShoppingList onBack={() => handleSetTab('dashboard')} />;
       case 'anamnesis': return <NutritionAnamnesisV2 onBack={() => handleSetTab('dashboard')} />;
@@ -90,7 +91,7 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
                 planKind="personal"
                 onBack={() => handleSetTab('dashboard')}
                 onOpenAssessments={() => handleSetTab('assessments')}
-                onDraftCreated={() => handleSetTab('planner')}
+                onDraftCreated={(planId) => { setSmartDraftId(planId); handleSetTab('planner'); }}
               />
             : <NutritionDashboard onNavigate={handleSetTab} />;
       case 'one-on-one': return <NutritionOneOnOne onBack={() => handleSetTab('dashboard')} />;
