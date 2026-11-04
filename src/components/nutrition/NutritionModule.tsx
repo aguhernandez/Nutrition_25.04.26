@@ -90,6 +90,7 @@ export default function NutritionModule({ initialTab = 'dashboard', onTabChange 
                 planKind="personal"
                 onBack={() => handleSetTab('dashboard')}
                 onOpenAssessments={() => handleSetTab('assessments')}
+                onDraftCreated={() => handleSetTab('planner')}
               />
             : <NutritionDashboard onNavigate={handleSetTab} />;
       case 'one-on-one': return <NutritionOneOnOne onBack={() => handleSetTab('dashboard')} />;
