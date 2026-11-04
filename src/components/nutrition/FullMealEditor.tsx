@@ -256,6 +256,7 @@ interface Props {
   targetUserId?: string;
   targetUserName?: string;
   targetUserEmail?: string;
+  initialPlanId?: string;
 }
 
 function calcItemMacros(food: FoodV2 | RecipeItem, qty: number) {
@@ -373,7 +374,7 @@ function calcMicronutrients(weekPlans: DayPlan[], selectedDay: number) {
   };
 }
 
-export default function FullMealEditor({ onBack, targetUserId, targetUserName, targetUserEmail }: Props) {
+export default function FullMealEditor({ onBack, targetUserId, targetUserName, targetUserEmail, initialPlanId }: Props) {
   const { profile } = useAuth();
   const { language } = usePreferences();
   const es = language === 'es';
@@ -485,13 +486,13 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
 
   useEffect(() => {
     if (isDemo) { setLoading(false); return; }
-    loadAllPlans();
+    loadAllPlans(initialPlanId);
     loadFoods();
     loadRecipes();
     loadTemplates();
-  }, [effectiveUserId]);
+  }, [effectiveUserId, initialPlanId]);
 
-  const loadAllPlans = async () => {
+  const loadAllPlans = async (preferredPlanId?: string) => {
     const { data } = await supabase
       .from('meal_plans_v2')
       .select('id, title, duration_days, created_at, status')
@@ -499,7 +500,7 @@ export default function FullMealEditor({ onBack, targetUserId, targetUserName, t
       .order('created_at', { ascending: false });
     const plans = (data || []) as { id: string; title: string; duration_days: number; created_at: string; status: string }[];
     setAllPlans(plans);
-    const active = plans.find((p) => p.status === 'active') || plans[0] || null;
+    const active = plans.find((p) => p.id === preferredPlanId) || plans.find((p) => p.status === 'active') || plans[0] || null;
     if (active) {
       await loadPlanById(active.id);
     } else {
