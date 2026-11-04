@@ -29,11 +29,38 @@ export interface SmartNutritionTargets {
   activity_factor: number;
 }
 
+export interface ContextualNutritionDay {
+  day: number;
+  date: string;
+  status: 'scheduled' | 'provisional';
+  duration_minutes: number;
+  estimated_impulse: number;
+  intensity: 'green' | 'yellow' | 'red';
+  calories_goal: number;
+  protein_goal: number;
+  carbs_goal: number;
+  fats_goal: number;
+  carb_g_per_kg: number;
+}
+
+export interface ContextualNutritionPlan {
+  version: 'contextual-v1';
+  days: ContextualNutritionDay[];
+  warnings: string[];
+  constraints: {
+    allergies: string[];
+    dietary_restrictions: string[];
+    red_s_review_required: boolean;
+  };
+  assumptions: string[];
+}
+
 export interface SmartNutritionPreflight {
   status: 'ready' | 'needs_data';
   missing: string[];
   snapshot: SmartNutritionSnapshot;
   targets: SmartNutritionTargets | null;
+  contextual_plan?: ContextualNutritionPlan | null;
 }
 
 export interface SmartPlanRequest {
