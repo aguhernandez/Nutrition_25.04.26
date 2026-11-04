@@ -331,6 +331,7 @@ function buildContextualPlan(snapshot: ReturnType<typeof buildSnapshot>, targets
   if (diaryAge === null || diaryAge > 14) warnings.push("FOOD_DIARY_STALE");
   if (snapshot.allergies.length > 0) warnings.push("ALLERGIES_REVIEW_REQUIRED");
   if (snapshot.dietary_restrictions.length > 0) warnings.push("RESTRICTIONS_REVIEW_REQUIRED");
+  if (snapshot.scheduled_workouts.length < 28) warnings.push("TRAINING_SCHEDULE_INCOMPLETE");
 
   const today = new Date();
   const workoutsByDate = new Map(
@@ -343,9 +344,10 @@ function buildContextualPlan(snapshot: ReturnType<typeof buildSnapshot>, targets
     const date = new Date(today);
     date.setUTCDate(today.getUTCDate() + index);
     const iso = date.toISOString().slice(0, 10);
-    // Training beyond the supplied schedule is deliberately marked provisional,
-    // not fabricated. The weekly pattern is repeated only for macro planning.
-    const scheduled = workoutsByDate.get(iso) ?? snapshot.scheduled_workouts[index % Math.max(snapshot.scheduled_workouts.length, 1)];
+    // Do not invent future training load. Days not supplied by Hub use a
+    // conservative baseline and remain visibly provisional until the schedule
+    // is refreshed.
+    const scheduled = workoutsByDate.get(iso);
     const duration = scheduled?.duration_minutes ?? 0;
     const carbGkg = duration >= 150 ? 6 : duration >= 76 ? 5 : duration >= 30 ? 4 : 3;
     const carbs = Math.round(weight * carbGkg);
@@ -388,7 +390,7 @@ function buildContextualPlan(snapshot: ReturnType<typeof buildSnapshot>, targets
     assumptions: [
       "Carbohydrate periodization uses 3/4/5/6 g/kg by planned duration bands.",
       "Estimated impulse is retained as context and is not converted to calories.",
-      "Days after the supplied schedule are provisional until training data is refreshed.",
+      "Days without a supplied training session use a conservative baseline and remain provisional until training data is refreshed.",
     ],
   };
 }
