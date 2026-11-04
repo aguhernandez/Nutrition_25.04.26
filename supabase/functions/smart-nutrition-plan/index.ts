@@ -19,6 +19,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type PlanKind = "personal" | "professional";
 type GenerationMode = "full" | "partial";
+type RequestAction = "preflight" | "generate";
 
 interface Requester {
   id: string;
@@ -27,10 +28,11 @@ interface Requester {
 }
 
 interface SmartRequest {
+  action: RequestAction;
   athlete_id: string;
   plan_kind: PlanKind;
   mode: GenerationMode;
-  request_key: string;
+  request_key?: string;
   professional_justification?: string;
   parent_plan_id?: string;
 }
@@ -94,6 +96,7 @@ async function getPlannerToken(satellite: ReturnType<typeof getServiceClient>): 
 
 function parseRequest(body: unknown): SmartRequest {
   const input = (body ?? {}) as Record<string, unknown>;
+  const action = input.action === undefined ? "generate" : input.action;
   const athleteId = typeof input.athlete_id === "string" ? input.athlete_id.trim() : "";
   const planKind = input.plan_kind;
   const mode = input.mode;
@@ -103,6 +106,9 @@ function parseRequest(body: unknown): SmartRequest {
     : undefined;
   const parentPlanId = typeof input.parent_plan_id === "string" ? input.parent_plan_id.trim() : undefined;
 
+  if (action !== "preflight" && action !== "generate") {
+    throw new HttpError(400, "INVALID_REQUEST", "action must be preflight or generate");
+  }
   if (!UUID_RE.test(athleteId)) throw new HttpError(400, "INVALID_REQUEST", "athlete_id must be a UUID");
   if (planKind !== "personal" && planKind !== "professional") {
     throw new HttpError(400, "INVALID_REQUEST", "plan_kind must be personal or professional");
@@ -110,13 +116,14 @@ function parseRequest(body: unknown): SmartRequest {
   if (mode !== "full" && mode !== "partial") {
     throw new HttpError(400, "INVALID_REQUEST", "mode must be full or partial");
   }
-  if (requestKey.length < 8 || requestKey.length > 100) {
+  if (action === "generate" && (requestKey.length < 8 || requestKey.length > 100)) {
     throw new HttpError(400, "INVALID_REQUEST", "request_key must be between 8 and 100 characters");
   }
   if (parentPlanId && !UUID_RE.test(parentPlanId)) {
     throw new HttpError(400, "INVALID_REQUEST", "parent_plan_id must be a UUID");
   }
   return {
+    action,
     athlete_id: athleteId,
     plan_kind: planKind,
     mode,
@@ -411,6 +418,18 @@ Deno.serve(async (req: Request) => {
 
     const snapshot = buildSnapshot(profileData, anamnesisData, workoutsData, diaryData);
     const missing = missingFields(snapshot);
+
+    // Preflight never creates a plan or ledger event. It is safe to call while
+    // the athlete/professional completes the data required for generation.
+    if (input.action === "preflight") {
+      return jsonResponse({
+        status: missing.length > 0 ? "needs_data" : "ready",
+        missing,
+        snapshot,
+        targets: missing.length > 0 ? null : calculateTargets(snapshot),
+      }, 200);
+    }
+
     if (missing.length > 0) {
       throw new HttpError(422, "SMART_DATA_INCOMPLETE", "Athlete data is incomplete for a smart plan", { missing });
     }
