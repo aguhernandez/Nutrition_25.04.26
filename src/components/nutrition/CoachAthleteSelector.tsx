@@ -29,6 +29,7 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Athlete | null>(null);
   const [openDraftEditor, setOpenDraftEditor] = useState(false);
+  const [draftPlanId, setDraftPlanId] = useState<string | undefined>(undefined);
   const [hubFailed, setHubFailed] = useState(false);
 
   useEffect(() => {
@@ -134,14 +135,15 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
           athleteName={selected.full_name}
           planKind="professional"
           onBack={() => setSelected(null)}
-          onDraftCreated={() => setOpenDraftEditor(true)}
+          onDraftCreated={(planId) => { setDraftPlanId(planId); setOpenDraftEditor(true); }}
         />
       );
     }
 
     return (
       <FullMealEditor
-        onBack={() => { setOpenDraftEditor(false); setSelected(null); }}
+        initialPlanId={draftPlanId}
+        onBack={() => { setDraftPlanId(undefined); setOpenDraftEditor(false); setSelected(null); }}
         targetUserId={selected.id}
         targetUserName={selected.full_name}
         targetUserEmail={selected.email}
