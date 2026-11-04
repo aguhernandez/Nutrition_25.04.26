@@ -58,18 +58,18 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
       }
 
       const hubIds = hubAthletes.map((athlete) => athlete.id).filter(Boolean);
-      const hubEmails = hubAthletes.map((athlete) => athlete.email).filter(Boolean);
-      const { data: localProfiles } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, hub_user_id')
-        .eq('role', 'athlete')
-        .or(`hub_user_id.in.(${hubIds.join(',')}),email.in.(${hubEmails.join(',')})`);
+      const { data: localProfiles } = hubIds.length > 0
+        ? await supabase
+            .from('profiles')
+            .select('id, email, full_name, hub_user_id')
+            .eq('role', 'athlete')
+            .in('hub_user_id', hubIds)
+        : { data: [] };
 
       const localByHubId = new Map((localProfiles ?? []).map((row: any) => [row.hub_user_id, row]));
-      const localByEmail = new Map((localProfiles ?? []).map((row: any) => [String(row.email).toLowerCase(), row]));
 
       const authorized: Athlete[] = hubAthletes.map((athlete) => {
-        const local = localByHubId.get(athlete.id) ?? localByEmail.get(athlete.email.toLowerCase());
+        const local = localByHubId.get(athlete.id);
         return {
           id: local?.id ?? athlete.id,
           email: athlete.email,
