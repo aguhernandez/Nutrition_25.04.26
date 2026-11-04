@@ -248,6 +248,26 @@ function buildSnapshot(profileData: unknown, anamnesisData: unknown, workoutsDat
     upcoming_workouts: upcoming.length,
     anamnesis_complete: Object.keys(anamnesis).length > 0,
     diary_entries_24h: diaryEntries24h,
+    allergies: [anamnesis.food_allergies, anamnesis.allergies_intolerances, anamnesis.intolerances]
+      .flatMap((value) => Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,;\n]/) : [])
+      .map((value) => String(value).trim().toLowerCase())
+      .filter(Boolean),
+    dietary_restrictions: [anamnesis.dietary_restrictions, anamnesis.food_restrictions, anamnesis.dietary_pattern]
+      .flatMap((value) => Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,;\n]/) : [])
+      .map((value) => String(value).trim().toLowerCase())
+      .filter(Boolean),
+    scheduled_workouts: upcoming.map((workout) => ({
+      scheduled_date: typeof (workout.scheduled_date ?? workout.date) === "string" ? String(workout.scheduled_date ?? workout.date) : null,
+      duration_minutes: durationOf(workout),
+      estimated_impulse: asNumber(workout.estimated_impulse) ?? 0,
+    })),
+    body_composition_measured_at: typeof bodyComposition.measured_at === "string" ? bodyComposition.measured_at : null,
+    anamnesis_updated_at: typeof anamnesis.updated_at === "string" ? anamnesis.updated_at : null,
+    diary_completed_at: (Array.isArray(diarySessions) ? diarySessions : [])
+      .map((session) => asRecord(session).completed_at)
+      .filter((value): value is string => typeof value === "string")
+      .sort()
+      .at(-1) ?? null,
     captured_at: new Date().toISOString(),
   };
 }
@@ -285,6 +305,91 @@ function calculateTargets(snapshot: ReturnType<typeof buildSnapshot>) {
     fats_goal: fats,
     bmr: Math.round(bmr),
     activity_factor: activityFactor,
+  };
+}
+
+function daysSince(value: string | null): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? Math.floor((Date.now() - time) / 86_400_000) : null;
+}
+
+/**
+ * Builds a transparent 28-day macro calendar. It intentionally does not infer
+ * food choices: allergies and restrictions remain hard constraints for the
+ * editor/professional rather than an unsafe automatic substitution.
+ */
+function buildContextualPlan(snapshot: ReturnType<typeof buildSnapshot>, targets: ReturnType<typeof calculateTargets>) {
+  const weight = snapshot.weight_kg as number;
+  const warnings: string[] = [];
+  const bodyAge = daysSince(snapshot.body_composition_measured_at);
+  const anamnesisAge = daysSince(snapshot.anamnesis_updated_at);
+  const diaryAge = daysSince(snapshot.diary_completed_at);
+
+  if (bodyAge === null || bodyAge > 90) warnings.push("BODY_COMPOSITION_STALE");
+  if (anamnesisAge === null || anamnesisAge > 180) warnings.push("ANAMNESIS_STALE");
+  if (diaryAge === null || diaryAge > 14) warnings.push("FOOD_DIARY_STALE");
+  if (snapshot.allergies.length > 0) warnings.push("ALLERGIES_REVIEW_REQUIRED");
+  if (snapshot.dietary_restrictions.length > 0) warnings.push("RESTRICTIONS_REVIEW_REQUIRED");
+
+  const today = new Date();
+  const workoutsByDate = new Map(
+    snapshot.scheduled_workouts
+      .filter((workout) => workout.scheduled_date)
+      .map((workout) => [String(workout.scheduled_date).slice(0, 10), workout]),
+  );
+
+  const days = Array.from({ length: 28 }, (_, index) => {
+    const date = new Date(today);
+    date.setUTCDate(today.getUTCDate() + index);
+    const iso = date.toISOString().slice(0, 10);
+    // Training beyond the supplied schedule is deliberately marked provisional,
+    // not fabricated. The weekly pattern is repeated only for macro planning.
+    const scheduled = workoutsByDate.get(iso) ?? snapshot.scheduled_workouts[index % Math.max(snapshot.scheduled_workouts.length, 1)];
+    const duration = scheduled?.duration_minutes ?? 0;
+    const carbGkg = duration >= 150 ? 6 : duration >= 76 ? 5 : duration >= 30 ? 4 : 3;
+    const carbs = Math.round(weight * carbGkg);
+    const protein = Math.round(weight * 1.6);
+    const fats = Math.round(weight * 1.0);
+    const calories = Math.round((carbs * 4 + protein * 4 + fats * 9) / 10) * 10;
+    const intensity = duration >= 150 ? "green" : duration >= 60 ? "yellow" : "red";
+    return {
+      day: index + 1,
+      date: iso,
+      status: index < 7 ? "scheduled" : "provisional",
+      duration_minutes: Math.round(duration),
+      estimated_impulse: Math.round(scheduled?.estimated_impulse ?? 0),
+      intensity,
+      calories_goal: calories,
+      protein_goal: protein,
+      carbs_goal: carbs,
+      fats_goal: fats,
+      carb_g_per_kg: carbGkg,
+    };
+  });
+
+  // RED-S is not diagnosed by this planner. This flag asks for clinician review
+  // when a high-volume day has a notably low carbohydrate target or source data
+  // is stale, rather than inventing energy-availability inputs we do not have.
+  const redSReviewRequired = days.some((day) => day.duration_minutes >= 90 && day.carb_g_per_kg < 5)
+    || warnings.includes("BODY_COMPOSITION_STALE")
+    || warnings.includes("FOOD_DIARY_STALE");
+  if (redSReviewRequired) warnings.push("RED_S_CLINICAL_REVIEW_REQUIRED");
+
+  return {
+    version: "contextual-v1",
+    days,
+    warnings,
+    constraints: {
+      allergies: snapshot.allergies,
+      dietary_restrictions: snapshot.dietary_restrictions,
+      red_s_review_required: redSReviewRequired,
+    },
+    assumptions: [
+      "Carbohydrate periodization uses 3/4/5/6 g/kg by planned duration bands.",
+      "Estimated impulse is retained as context and is not converted to calories.",
+      "Days after the supplied schedule are provisional until training data is refreshed.",
+    ],
   };
 }
 
@@ -422,13 +527,17 @@ Deno.serve(async (req: Request) => {
 
     // Preflight never creates a plan or ledger event. It is safe to call while
     // the athlete/professional completes the data required for generation.
+    const targets = missing.length > 0 ? null : calculateTargets(snapshot);
+    const contextualPlan = targets ? buildContextualPlan(snapshot, targets) : null;
+
     if (input.action === "preflight") {
       return jsonResponse({
         status: missing.length > 0 ? "needs_data" : "ready",
         contract_version: PREFLIGHT_CONTRACT_VERSION,
         missing,
         snapshot,
-        targets: missing.length > 0 ? null : calculateTargets(snapshot),
+        targets,
+        contextual_plan: contextualPlan,
       }, 200);
     }
 
@@ -436,7 +545,9 @@ Deno.serve(async (req: Request) => {
       throw new HttpError(422, "SMART_DATA_INCOMPLETE", "Athlete data is incomplete for a smart plan", { missing });
     }
 
-    const targets = calculateTargets(snapshot);
+    if (!targets || !contextualPlan) {
+      throw new HttpError(500, "CALCULATION_ERROR", "Contextual plan could not be calculated");
+    }
     const isPersonal = input.plan_kind === "personal";
     const title = input.mode === "partial"
       ? "Revision de plan inteligente"
@@ -454,11 +565,32 @@ Deno.serve(async (req: Request) => {
       requesterProfile?.id ?? null,
       title,
       targets,
-      snapshot,
+      { ...snapshot, contextual_plan: contextualPlan },
     );
 
+    // A smart full plan is a 28-day calendar draft. No meals are fabricated:
+    // FullMealEditor receives daily targets and the user/professional chooses
+    // foods, which keeps allergies and preferences under explicit review.
+    let plan = result.plan;
+    if (result.status === "created" && input.mode === "full") {
+      const dayOverrides = Object.fromEntries(contextualPlan.days.map((day) => [
+        `day_${day.day}`,
+        { calories: day.calories_goal, protein: day.protein_goal, carbs: day.carbs_goal, fat: day.fats_goal },
+      ]));
+      const { error: calendarError } = await satellite.from("meal_plans_v2").update({
+        duration_days: 28,
+        plan_mode: "calendar",
+        start_date: contextualPlan.days[0]?.date,
+        week_pattern: contextualPlan.days.map((day) => day.intensity),
+        day_overrides: dayOverrides,
+        generation_parameters: { mode: input.mode, targets, contextual_plan: contextualPlan, request_key: input.request_key },
+      }).eq("id", result.plan.id);
+      if (calendarError) throw new HttpError(500, "DATABASE_ERROR", "Monthly calendar could not be prepared");
+      plan = await loadPlanById(satellite, result.plan.id);
+    }
+
     return jsonResponse(
-      { status: result.status, plan: result.plan, targets, snapshot },
+      { status: result.status, plan, targets, snapshot, contextual_plan: contextualPlan },
       result.status === "created" ? 201 : 200,
     );
   } catch (error) {
