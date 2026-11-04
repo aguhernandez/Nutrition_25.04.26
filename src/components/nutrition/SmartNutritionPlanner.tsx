@@ -188,6 +188,52 @@ export default function SmartNutritionPlanner({
                   </div>
                 ))}
               </div>
+              {preflight.contextual_plan && (
+                <div className="mt-5 pt-4 border-t" style={{ borderColor: '#e4dfea' }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-body text-xs font-bold uppercase tracking-wider" style={{ color: '#514163' }}>
+                      {copy('Vista previa: primeros 7 días', 'Preview: first 7 days')}
+                    </p>
+                    <span className="font-body text-[11px]" style={{ color: '#6b7280' }}>
+                      {copy('28 días editables', '28 editable days')}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto mt-2">
+                    <table className="w-full min-w-[510px] font-body text-xs">
+                      <thead style={{ color: '#6b7280' }}>
+                        <tr className="text-left">
+                          <th className="py-1.5 font-semibold">{copy('Día', 'Day')}</th>
+                          <th className="py-1.5 font-semibold">{copy('Sesión', 'Session')}</th>
+                          <th className="py-1.5 font-semibold">CHO</th>
+                          <th className="py-1.5 font-semibold">kcal</th>
+                          <th className="py-1.5 font-semibold">{copy('Estado', 'Status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {preflight.contextual_plan.days.slice(0, 7).map((day) => (
+                          <tr key={day.day} className="border-t" style={{ borderColor: '#ede9f2', color: '#374151' }}>
+                            <td className="py-2 tabular-nums">{day.day}</td>
+                            <td className="py-2">{day.duration_minutes ? `${day.duration_minutes} min` : '—'}</td>
+                            <td className="py-2 tabular-nums">{day.carbs_goal} g</td>
+                            <td className="py-2 tabular-nums">{day.calories_goal}</td>
+                            <td className="py-2">
+                              <span style={{ color: day.status === 'scheduled' ? '#15803d' : '#a16207' }}>
+                                {day.status === 'scheduled' ? copy('Programado', 'Scheduled') : copy('Provisional', 'Provisional')}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {preflight.contextual_plan.warnings.length > 0 && (
+                    <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: '#fffbeb', color: '#92400e' }}>
+                      <p className="font-bold">{copy('Revisión requerida antes de aplicar', 'Review required before applying')}</p>
+                      <p className="mt-1">{preflight.contextual_plan.warnings.map((warning) => warning.replaceAll('_', ' ').toLowerCase()).join(' · ')}</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <button onClick={createDraft} disabled={creating} className="btn-primary w-full py-3 mt-4 flex items-center justify-center gap-2 disabled:opacity-60">
               {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
