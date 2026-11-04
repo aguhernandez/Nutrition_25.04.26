@@ -38,61 +38,55 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
     setLoading(true);
     setHubFailed(false);
 
-    // Load local profiles as baseline
-    const { data: localProfiles } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, hub_user_id')
-      .eq('role', 'athlete')
-      .order('full_name');
-
-    const localAthletes: Athlete[] = (localProfiles ?? []).map((p: any) => ({
-      id: p.id,
-      email: p.email,
-      full_name: p.full_name,
-      hub_user_id: p.hub_user_id,
-      hasLocalProfile: true,
-    }));
-
-    // Try to get coach's athlete roster from Hub
-    if (profile?.hub_user_id || profile?.email) {
-      try {
-        const hubRes = await getCoachAthletes(profile.hub_user_id || profile.email);
-        const hubAthletes = hubRes.athletes ?? [];
-
-        if (hubAthletes.length > 0) {
-          // Merge: Hub athletes that don't have a local profile yet
-          const localEmails = new Set(localAthletes.map((a) => a.email.toLowerCase()));
-          const localHubIds = new Set(localAthletes.map((a) => a.hub_user_id).filter(Boolean));
-
-          const merged = [...localAthletes];
-
-          for (const ha of hubAthletes) {
-            const emailMatch = localEmails.has(ha.email.toLowerCase());
-            const idMatch = ha.id && localHubIds.has(ha.id);
-            if (!emailMatch && !idMatch) {
-              merged.push({
-                id: ha.id,
-                email: ha.email,
-                full_name: ha.full_name || ha.name || ha.email.split('@')[0],
-                hub_user_id: ha.id,
-                hasLocalProfile: false,
-              });
-            }
-          }
-
-          merged.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
-          setAthletes(merged);
-          setLoading(false);
-          return;
-        }
-      } catch {
-        setHubFailed(true);
-      }
+    // The Hub endpoint is the authority for a professional roster. Do not
+    // fall back to every local athlete: cached satellite profiles are not an
+    // authorization source and could expose an unrelated athlete.
+    if (!profile?.hub_user_id && !profile?.email) {
+      setAthletes([]);
+      setHubFailed(true);
+      setLoading(false);
+      return;
     }
 
-    // Fallback to local only
-    setAthletes(localAthletes);
-    setLoading(false);
+    try {
+      const hubRes = await getCoachAthletes(profile.hub_user_id || profile.email);
+      const hubAthletes = hubRes.athletes ?? [];
+      if (hubAthletes.length === 0) {
+        setAthletes([]);
+        setLoading(false);
+        return;
+      }
+
+      const hubIds = hubAthletes.map((athlete) => athlete.id).filter(Boolean);
+      const hubEmails = hubAthletes.map((athlete) => athlete.email).filter(Boolean);
+      const { data: localProfiles } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, hub_user_id')
+        .eq('role', 'athlete')
+        .or(`hub_user_id.in.(${hubIds.join(',')}),email.in.(${hubEmails.join(',')})`);
+
+      const localByHubId = new Map((localProfiles ?? []).map((row: any) => [row.hub_user_id, row]));
+      const localByEmail = new Map((localProfiles ?? []).map((row: any) => [String(row.email).toLowerCase(), row]));
+
+      const authorized: Athlete[] = hubAthletes.map((athlete) => {
+        const local = localByHubId.get(athlete.id) ?? localByEmail.get(athlete.email.toLowerCase());
+        return {
+          id: local?.id ?? athlete.id,
+          email: athlete.email,
+          full_name: local?.full_name ?? athlete.full_name ?? athlete.name ?? athlete.email.split('@')[0],
+          hub_user_id: athlete.id,
+          hasLocalProfile: Boolean(local),
+        };
+      });
+
+      authorized.sort((x, y) => (x.full_name || '').localeCompare(y.full_name || ''));
+      setAthletes(authorized);
+    } catch {
+      setHubFailed(true);
+      setAthletes([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSelectAthlete = async (athlete: Athlete) => {
@@ -197,7 +191,7 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
           <CloudOff className="w-4 h-4 flex-shrink-0" style={{ color: '#b45309' }} />
           <span className="font-body text-xs" style={{ color: '#92400e' }}>
             {language === 'es'
-              ? 'No se pudo conectar con Hub. Mostrando atletas locales.'
+              ? 'No se pudo conectar con Hub. No se muestran atletas hasta recuperar un roster autorizado.'
               : 'Could not reach Hub. Showing local athletes only.'}
           </span>
         </div>
