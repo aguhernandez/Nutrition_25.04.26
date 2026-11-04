@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Apple, Flame, TrendingUp, ClipboardList, ChevronRight, Zap, Target, Award, MessageCircle, BarChart2, Trophy, MessageSquare, Microscope } from 'lucide-react';
+import { Apple, Flame, TrendingUp, ClipboardList, ChevronRight, Zap, Target, Award, MessageCircle, BarChart2, Trophy, MessageSquare, Microscope, Sparkles } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { usePreferences } from '../../lib/preferences';
 import { getAnamnesis, getDiaryRange } from '../../lib/nutritionService';
@@ -161,6 +161,13 @@ export default function NutritionDashboard({ onNavigate }: Props) {
       title: es ? 'Crear Plan' : 'Create Plan',
       desc: es ? 'Plan de nutrición' : 'Nutrition plan',
       highlight: false,
+    },
+    {
+      id: 'smart-plan' as NutritionTab,
+      icon: Sparkles,
+      title: es ? 'Plan Inteligente' : 'Smart Plan',
+      desc: es ? 'Validar datos y crear un borrador editable' : 'Validate data and create an editable draft',
+      highlight: true,
     },
     {
       id: 'one-on-one' as NutritionTab,
