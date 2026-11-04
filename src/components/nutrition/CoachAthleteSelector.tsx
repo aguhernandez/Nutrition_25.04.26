@@ -28,6 +28,7 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Athlete | null>(null);
+  const [openDraftEditor, setOpenDraftEditor] = useState(false);
   const [hubFailed, setHubFailed] = useState(false);
 
   useEffect(() => {
@@ -126,21 +127,21 @@ export default function CoachAthleteSelector({ onBack, mode = 'editor' }: Props)
   };
 
   if (selected) {
-    if (mode === 'smart') {
+    if (mode === 'smart' && !openDraftEditor) {
       return (
         <SmartNutritionPlanner
           athleteId={selected.id}
           athleteName={selected.full_name}
           planKind="professional"
           onBack={() => setSelected(null)}
-          onDraftCreated={() => setSelected(null)}
+          onDraftCreated={() => setOpenDraftEditor(true)}
         />
       );
     }
 
     return (
       <FullMealEditor
-        onBack={() => setSelected(null)}
+        onBack={() => { setOpenDraftEditor(false); setSelected(null); }}
         targetUserId={selected.id}
         targetUserName={selected.full_name}
         targetUserEmail={selected.email}
