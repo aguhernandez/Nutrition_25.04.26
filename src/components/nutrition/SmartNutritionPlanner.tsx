@@ -5,6 +5,8 @@ import { HubApiError } from '../../lib/hubApi';
 import {
   createSmartNutritionDraft,
   preflightSmartNutrition,
+  requestSmartNutritionAssist,
+  type SmartNutritionAssistProposal,
   type SmartNutritionPreflight,
   type SmartPlanKind,
 } from '../../lib/smartNutritionService';
@@ -43,6 +45,9 @@ export default function SmartNutritionPlanner({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [preferenceNotes, setPreferenceNotes] = useState('');
+  const [assistProposal, setAssistProposal] = useState<SmartNutritionAssistProposal | null>(null);
+  const [assisting, setAssisting] = useState(false);
 
   const copy = (esText: string, enText: string) => es ? esText : enText;
   const professional = planKind === 'professional';
@@ -60,6 +65,7 @@ export default function SmartNutritionPlanner({
     }
     setError(null);
     setCreatedId(null);
+    setAssistProposal(null);
     setLoading(true);
     try {
       setPreflight(await preflightSmartNutrition(request));
@@ -67,6 +73,23 @@ export default function SmartNutritionPlanner({
       setError(err instanceof Error ? err.message : copy('No se pudo validar la información.', 'The information could not be validated.'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const prepareAssistProposal = async () => {
+    if (!preflight || preflight.status !== 'ready') return;
+    setError(null);
+    setAssisting(true);
+    try {
+      setAssistProposal(await requestSmartNutritionAssist({
+        ...request,
+        preferenceNotes,
+        language: es ? 'es' : 'en',
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : copy('No se pudo preparar la propuesta.', 'The proposal could not be prepared.'));
+    } finally {
+      setAssisting(false);
     }
   };
 
@@ -232,6 +255,53 @@ export default function SmartNutritionPlanner({
                       <p className="mt-1">{preflight.contextual_plan.warnings.map((warning) => warning.replace(/_/g, ' ').toLowerCase()).join(' · ')}</p>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-xl p-4" style={{ backgroundColor: '#fbfafc', border: '1px solid #e4dfea' }}>
+              <div className="flex items-start gap-2">
+                <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#514163' }} />
+                <div>
+                  <h2 className="font-body text-sm font-bold" style={{ color: '#1f2937' }}>{copy('Propuesta asistida por IA', 'AI-assisted proposal')}</h2>
+                  <p className="font-body text-xs mt-1" style={{ color: '#6b7280' }}>
+                    {copy('La IA sólo puede proponer alimentos que ya existen en tu biblioteca. No modifica ni guarda el plan.', 'AI can only propose foods already in your library. It does not modify or save the plan.')}
+                  </p>
+                </div>
+              </div>
+              <label className="block mt-4">
+                <span className="font-body text-xs font-semibold" style={{ color: '#374151' }}>{copy('Preferencias o contexto opcional', 'Optional preferences or context')}</span>
+                <textarea
+                  value={preferenceNotes}
+                  onChange={(event) => setPreferenceNotes(event.target.value.slice(0, 500))}
+                  maxLength={500}
+                  rows={3}
+                  className="input-brand mt-2 resize-y text-sm"
+                  placeholder={copy('Ej. prefiero opciones vegetarianas y desayunos rápidos.', 'E.g. I prefer vegetarian options and quick breakfasts.')}
+                />
+                <span className="font-body text-[11px] mt-1 block" style={{ color: '#9ca3af' }}>{preferenceNotes.length}/500</span>
+              </label>
+              <button onClick={prepareAssistProposal} disabled={assisting} className="btn-ghost w-full py-2.5 mt-3 border rounded-xl flex items-center justify-center gap-2 disabled:opacity-60" style={{ borderColor: '#b8abc7', color: '#514163' }}>
+                {assisting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {copy('Preparar propuesta de IA', 'Prepare AI proposal')}
+              </button>
+              {assistProposal && (
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: '#e4dfea' }}>
+                  <p className="font-body text-sm font-bold" style={{ color: '#514163' }}>{copy('Propuesta de IA: revisar y agregar manualmente en el editor.', 'AI proposal: review and add manually in the editor.')}</p>
+                  {assistProposal.foods.length > 0 && (
+                    <ul className="mt-3 space-y-2">
+                      {assistProposal.foods.map((food) => (
+                        <li key={food.id} className="rounded-lg p-3 font-body text-xs" style={{ backgroundColor: '#fff', border: '1px solid #ede9f2', color: '#374151' }}>
+                          <p className="font-bold">{food.name}</p>
+                          <p className="mt-1" style={{ color: '#6b7280' }}>{food.category ?? copy('Sin categoría', 'Uncategorised')} · {food.calories_per_100g ?? '—'} kcal · {food.carbs_per_100g ?? '—'} g CHO / 100 g</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="font-body text-xs mt-3" style={{ color: '#374151' }}>{assistProposal.report}</p>
+                  {assistProposal.rationale.length > 0 && <p className="font-body text-xs mt-2" style={{ color: '#6b7280' }}><strong>{copy('Criterios:', 'Rationale:')}</strong> {assistProposal.rationale.join(' · ')}</p>}
+                  {assistProposal.restriction_checks.length > 0 && <p className="font-body text-xs mt-2" style={{ color: '#166534' }}><strong>{copy('Restricciones verificadas:', 'Restrictions checked:')}</strong> {assistProposal.restriction_checks.join(' · ')}</p>}
+                  {(assistProposal.uncertainties.length > 0 || assistProposal.requires_professional_review) && <p className="font-body text-xs mt-2" style={{ color: '#92400e' }}><strong>{copy('Revisión necesaria:', 'Review needed:')}</strong> {assistProposal.uncertainties.join(' · ') || copy('Revisión profesional recomendada.', 'Professional review is recommended.')}</p>}
                 </div>
               )}
             </div>
