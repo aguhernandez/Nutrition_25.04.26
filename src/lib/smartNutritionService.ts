@@ -1,6 +1,7 @@
 import { HubApiError } from './hubApi';
 
 const SMART_PLAN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/smart-nutrition-plan`;
+const SMART_ASSIST_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/smart-nutrition-assist`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const HUB_SESSION_TOKEN_KEY = 'hub_session_token';
 
@@ -81,8 +82,8 @@ function headers(): HeadersInit {
   };
 }
 
-async function request<T>(body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(SMART_PLAN_URL, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+async function request<T>(body: Record<string, unknown>, url = SMART_PLAN_URL): Promise<T> {
+  const response = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new HubApiError(payload?.error ?? 'SMART_PLAN_ERROR', payload?.message ?? `HTTP ${response.status}`, payload);
@@ -103,6 +104,35 @@ function bodyFor(input: SmartPlanRequest) {
 /** Checks the current Hub-derived data without creating a plan or consuming quota. */
 export function preflightSmartNutrition(input: SmartPlanRequest) {
   return request<SmartNutritionPreflight>({ action: 'preflight', ...bodyFor(input) });
+}
+
+export interface SmartNutritionAssistFood {
+  id: string;
+  name: string;
+  category: string | null;
+  calories_per_100g: number | null;
+  carbs_per_100g: number | null;
+  protein_per_100g: number | null;
+  fat_per_100g: number | null;
+}
+
+export interface SmartNutritionAssistProposal {
+  selected_food_ids: string[];
+  foods: SmartNutritionAssistFood[];
+  rationale: string[];
+  restriction_checks: string[];
+  uncertainties: string[];
+  report: string;
+  requires_professional_review: boolean;
+}
+
+/** Requests an advisory-only proposal. It never saves or applies plan changes. */
+export function requestSmartNutritionAssist(input: SmartPlanRequest & { preferenceNotes?: string; language?: 'es' | 'en' }) {
+  return request<SmartNutritionAssistProposal>({
+    athlete_id: input.athleteId,
+    preference_notes: input.preferenceNotes?.trim() || undefined,
+    language: input.language,
+  }, SMART_ASSIST_URL);
 }
 
 /** Creates a saved draft after the user has reviewed a successful preflight. */
