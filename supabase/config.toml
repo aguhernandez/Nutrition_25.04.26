@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.smart-nutrition-plan]
 verify_jwt = false
+
+[functions.smart-nutrition-assist]
+verify_jwt = false

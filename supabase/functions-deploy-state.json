@@ -20,6 +20,10 @@
     "usda-proxy": {
       "hasChanged": false,
       "hash": "383218625408fa9600e4537c54ddac44c0df1f639d48cc8d9b7cdb995e06e63a"
+    },
+    "smart-nutrition-assist": {
+      "hasChanged": false,
+      "hash": "50c5975791ee1ae25dfe5d056d3d24af5c4a10ae7ceda4f3ecc04ed9b35537d1"
     }
   }
 }
