@@ -416,12 +416,12 @@ async function createPlanWithQuota(
   title: string,
   targets: ReturnType<typeof calculateTargets>,
   snapshot: ReturnType<typeof buildSnapshot>,
+  contextualPlan: ReturnType<typeof buildContextualPlan>,
 ) {
-  const { data, error } = await satellite.rpc("create_smart_plan_with_quota", {
+  const common = {
     p_athlete_id: athlete.id,
     p_request_key: input.request_key,
     p_requester_hub_id: requester.id,
-    p_kind: input.mode,
     p_title: title,
     p_description: `Generado con ${CALCULATOR_VERSION}`,
     p_calories_goal: targets.calories_goal,
@@ -429,14 +429,30 @@ async function createPlanWithQuota(
     p_carbs_goal: targets.carbs_goal,
     p_fats_goal: targets.fats_goal,
     p_plan_kind: input.plan_kind,
-    p_smart_status: input.plan_kind === "personal" ? "suggested" : "under_review",
     p_calculator_version: CALCULATOR_VERSION,
     p_source_snapshot: snapshot,
-    p_generation_parameters: { mode: input.mode, targets, request_key: input.request_key },
     p_professional_justification: input.professional_justification ?? null,
     p_parent_plan_id: input.parent_plan_id ?? null,
     p_coach_id: coachId,
-  });
+  };
+
+  const { data, error } = input.mode === "full"
+    ? await satellite.rpc("create_smart_calendar_plan_with_quota", {
+      ...common,
+      p_generation_parameters: { mode: input.mode, targets, contextual_plan: contextualPlan, request_key: input.request_key },
+      p_start_date: contextualPlan.days[0]?.date,
+      p_week_pattern: contextualPlan.days.map((day) => day.intensity),
+      p_day_overrides: Object.fromEntries(contextualPlan.days.map((day) => [
+        `day_${day.day}`,
+        { calories: day.calories_goal, protein: day.protein_goal, carbs: day.carbs_goal, fat: day.fats_goal },
+      ])),
+    })
+    : await satellite.rpc("create_smart_plan_with_quota", {
+      ...common,
+      p_kind: input.mode,
+      p_smart_status: input.plan_kind === "personal" ? "suggested" : "under_review",
+      p_generation_parameters: { mode: input.mode, targets, request_key: input.request_key },
+    });
 
   if (error) {
     if (error.message.includes("SMART_PLAN_QUOTA_EXCEEDED")) {
@@ -569,31 +585,14 @@ Deno.serve(async (req: Request) => {
       title,
       targets,
       { ...snapshot, contextual_plan: contextualPlan },
+      contextualPlan,
     );
 
     // A smart full plan is a 28-day calendar draft. No meals are fabricated:
     // FullMealEditor receives daily targets and the user/professional chooses
     // foods, which keeps allergies and preferences under explicit review.
-    let plan = result.plan;
-    if (result.status === "created" && input.mode === "full") {
-      const dayOverrides = Object.fromEntries(contextualPlan.days.map((day) => [
-        `day_${day.day}`,
-        { calories: day.calories_goal, protein: day.protein_goal, carbs: day.carbs_goal, fat: day.fats_goal },
-      ]));
-      const { error: calendarError } = await satellite.from("meal_plans_v2").update({
-        duration_days: 28,
-        plan_mode: "calendar",
-        start_date: contextualPlan.days[0]?.date,
-        week_pattern: contextualPlan.days.map((day) => day.intensity),
-        day_overrides: dayOverrides,
-        generation_parameters: { mode: input.mode, targets, contextual_plan: contextualPlan, request_key: input.request_key },
-      }).eq("id", result.plan.id);
-      if (calendarError) throw new HttpError(500, "DATABASE_ERROR", "Monthly calendar could not be prepared");
-      plan = await loadPlanById(satellite, result.plan.id);
-    }
-
     return jsonResponse(
-      { status: result.status, plan, targets, snapshot, contextual_plan: contextualPlan },
+      { status: result.status, plan: result.plan, targets, snapshot, contextual_plan: contextualPlan },
       result.status === "created" ? 201 : 200,
     );
   } catch (error) {
