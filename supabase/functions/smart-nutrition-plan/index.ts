@@ -370,12 +370,13 @@ function buildContextualPlan(snapshot: ReturnType<typeof buildSnapshot>, targets
     };
   });
 
-  // RED-S is not diagnosed by this planner. This flag asks for clinician review
-  // when a high-volume day has a notably low carbohydrate target or source data
-  // is stale, rather than inventing energy-availability inputs we do not have.
-  const redSReviewRequired = days.some((day) => day.duration_minutes >= 90 && day.carb_g_per_kg < 5)
-    || warnings.includes("BODY_COMPOSITION_STALE")
-    || warnings.includes("FOOD_DIARY_STALE");
+  // RED-S is not diagnosed by this planner. It asks for clinician review only
+  // when a high training load coincides with stale source data. We deliberately
+  // do not fabricate energy-availability inputs or infer a clinical condition.
+  const highTrainingLoad = snapshot.weekly_training_minutes >= 600
+    || days.some((day) => day.duration_minutes >= 150);
+  const redSReviewRequired = highTrainingLoad
+    && (warnings.includes("BODY_COMPOSITION_STALE") || warnings.includes("FOOD_DIARY_STALE"));
   if (redSReviewRequired) warnings.push("RED_S_CLINICAL_REVIEW_REQUIRED");
 
   return {
