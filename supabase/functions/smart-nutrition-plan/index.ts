@@ -13,6 +13,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const CALCULATOR_VERSION = "smart-v1";
+const PREFLIGHT_CONTRACT_VERSION = "preflight-v1";
 const PROFESSIONAL_ROLES = new Set(["coach", "trainer", "nutritionist", "head_coach", "admin"]);
 const QUOTA_LIMITS = { full: 1, partial: 2 } as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -424,6 +425,7 @@ Deno.serve(async (req: Request) => {
     if (input.action === "preflight") {
       return jsonResponse({
         status: missing.length > 0 ? "needs_data" : "ready",
+        contract_version: PREFLIGHT_CONTRACT_VERSION,
         missing,
         snapshot,
         targets: missing.length > 0 ? null : calculateTargets(snapshot),
